@@ -1,0 +1,6 @@
+
+
+These two HMM files (bac_16s.hmm and arc_16s.hmm) are taken from https://github.com/tseemann/barrnap/blob/master/db/ 
+They were taken March 2025 
+The non-16S databases were manually removed (5S, 23S, etc.).
+
