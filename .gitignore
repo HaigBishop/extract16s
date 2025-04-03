@@ -1,1 +1,3 @@
-InputData/ssu_all_r220_filtered.fna 
+InputData/ssu_all_r220_filtered.fna
+Intermediates/*.fna
+Intermediates/*.sto

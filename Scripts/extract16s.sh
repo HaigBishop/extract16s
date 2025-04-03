@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 
-# extract_16s_regions_hmmalign.sh - A script for extracting variable regions from 16S rRNA sequences. 
+# extract16s.sh - A script for extracting variable regions from 16S rRNA sequences. Made for Ubuntu.
 #  - Uses HMMs to extract regions.
 #  - Unless --no_filter_ambiguous flag is given, filter sequences by ambiguous base content (non-ATCG bases)
-#  - Unless --no_require_all_regions flag is given, only keep sequences that pass through all regions
-#  - The <input_fna> given to this script should the output of the filter_database.py script.
+#  - Unless --no_require_all_regions flag is given, only keep sequences successfully extracted for all regions
+#  - If using with Micro16S, the <input_fna> given to this script should the output of the filter_database.py script.
 #  - If --skip_align flag is given, skips the alignment process and uses pre-existing alignments. 
-#       (Assuming they exist at: ./Intermediates/align_arc_ssu.a2m and ./Intermediates/align_bac_ssu.a2m)
+#       (Assuming they exist at: ./Intermediates/01_align_arc_ssu.a2m and ./Intermediates/01_align_bac_ssu.a2m)
 #       (This is good to rerun the truncation process without re-running the alignment process saving much time)
 #  - If --rm_intermediates flag is given, removes the Intermediates directory after processing.
 
@@ -34,7 +34,7 @@
 
 
 # Usage:
-#   bash extract_16s_regions_hmmalign.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [options]
+#   bash extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [options]
 # 
 # Options:
 #   --skip_align              Skip alignment process (use existing alignments)
@@ -46,14 +46,10 @@
 #                            positions 500-700, the actual extraction would be from 490-710
 #
 # Example Usage:
-#   bash extract_16s_regions_hmmalign.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v3_v3-v4.truncspec
-
-
-
+#   bash extract16s.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v3_v3-v4.truncspec
 
 
 # Directory structure example:
-
 #  nhmmer_root/
 #  │
 #  ├── InputData
@@ -63,28 +59,26 @@
 #  │   └── trunc_spec_v3_v3-v4.truncspec    # Truncation specification file
 #  │
 #  ├── Scripts/
-#  │   └── extract_16s_regions_hmmalign.sh  # Main script
+#  │   └── extract16s.sh  # Main script
 #  │
 #  └── Intermediates/    # (all created during script execution)
-#  │   ├── full_seqs_arc.fna                # Archaea full length sequences
-#  │   ├── full_seqs_bac.fna                # Bacteria full length sequences
-#  │   ├── align_arc_ssu.sto                # Archaea alignment
-#  │   ├── align_bac_ssu.sto                # Bacteria alignment
-#  │   ├── align_arc_ssu.a2m                # Archaea alignment (A2M format)
-#  │   ├── align_bac_ssu.a2m                # Bacteria alignment (A2M format)
-#  │   ├── truncated_arc_{REGION_NAME}.fna        # Archaea truncated sequences
-#  │   ├── truncated_bac_{REGION_NAME}.fna        # Bacteria truncated sequences
-#  │   ├── 01_joined_truncated_{REGION_NAME}.fna   # joined truncated sequences
-#  │   ├── 02_reordered_truncated_{REGION_NAME}.fna  # Reordered truncated sequences
-#  │   ├── 03_filtered_truncated_{REGION_NAME}.fna  # Filtered truncated sequences
-#  │   └── filtered_full_seqs.fna           # Filtered full sequences
+#  │   ├── 00_full_seqs_arc.fna                # Archaea full length sequences
+#  │   ├── 00_full_seqs_bac.fna                # Bacteria full length sequences
+#  │   ├── 01_align_arc_ssu.sto                # Archaea alignment
+#  │   ├── 01_align_bac_ssu.sto                # Bacteria alignment
+#  │   ├── 01_align_arc_ssu.a2m                # Archaea alignment (A2M format)
+#  │   ├── 01_align_bac_ssu.a2m                # Bacteria alignment (A2M format)
+#  │   ├── 02_truncated_arc_{REGION_NAME}.fna        # Archaea truncated sequences
+#  │   ├── 02_truncated_bac_{REGION_NAME}.fna        # Bacteria truncated sequences
+#  │   ├── 03_joined_truncated_{REGION_NAME}.fna   # joined truncated sequences
+#  │   ├── 04_reordered_truncated_{REGION_NAME}.fna  # Reordered truncated sequences
+#  │   ├── 05_filtered_truncated_{REGION_NAME}.fna  # Filtered truncated sequences
+#  │   └── 06_filtered_full_seqs.fna           # Filtered full sequences
 #  │
 #  └── Output/
 #      ├── FULL_seqs.fasta                # Full length sequences (same as input FASTA file, but filtered)
 #      ├── {REGION_NAME}_seqs.fasta       # Extracted sequences for each region
 #      └── about.txt                      # Summary of processing details
-
-
 
 
 # More example usage:
@@ -96,7 +90,7 @@
 # find . -type f -name "*.truncspec" -exec dos2unix {} +
 
 # # Run the script
-# bash ./Scripts/extract_16s_regions_hmmalign.sh \
+# bash ./Scripts/extract16s.sh \
 #      ./InputData/ssu_all_r220_filtered.fna \
 #      ./InputData/bac_16s.hmm \
 #      ./InputData/arc_16s.hmm \
@@ -104,8 +98,6 @@
 #      --trunc_padding 15 --rm_intermediates #--skip_align 
 #                                                 ^---- OPTIONALLY SKIP ALIGNMENT PROCESS 
 #                                                 (if you already have the .a2m alignments)
-
-
 
 
 # Script Processing Steps
@@ -144,17 +136,17 @@
 
 
 # Example input .fna file (sequences shortened for brevity):
-# >GB_GCA_000488855.1~KI535272.1 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Peptostreptococcales;f__Anaerovoracaceae;g__Gallibacter;s__Gallibacter brachus [location=411..1920] [ssu_len=1510] [contig_len=1959]
+# >GB_GCA_000488806.1~KI535272.1 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Peptostreptococcales;f__Anaerovoracaceae;g__Gallibacter;s__Gallibacter brachus [location=411..1920] [ssu_len=1510] [contig_len=1959]
 # GGCAGCAGTGGGGAATATTGCACAATGGGGGAAACCCTGATGCAGCAACGCCGCGTGAACGATGAAGGCCTTTGGGTCGTAAAGTTCTGTTCTAGGTGATGAAAACTGACAGTAACCTAGGAGAAAGCCCCGGCTAACTCCGTGCCAGCAGCCGCGGTAATACGGAGGGGGCAAGCGTTATCCGGAATTATTGGGCGTAAAGGGTACGTAGGTGGCCTT
-# >GB_GCA_000492175.2~CP097573.1 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Oscillospirales;f__Oscillospiraceae;g__Lawsonibacter;s__Lawsonibacter sp000492175 [location=1161155..1162683] [ssu_len=1529] [contig_len=3665928]
+# >GB_GCA_000492175.2~CP097573.1 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Oscillospirales;f__Oscillospiraceae;g__Lawsonibacter;s__Lawsonibacter sp000492175 [location=1161106..1162683] [ssu_len=1529] [contig_len=3065928]
 # GGAGGCAGCAGTGGGGAATATTGGGCAATGGGCGCAAGCCTGACCCAGCAACGCCGCGTGAAGGAAGAAGGCTTTCGGGTTGTAAACTTCTTTTCTCAGGGACGAAGCAAGTGACGGTACCTGAGGAATAAGCCACGGCTAACTACGTGCCAGCAGCCGCGGTAATACGTAGGTGGCAAGCGTTATCCGGATTTACTGGGTGTAAAGGGCGTGTAGGCGGG
-# >GB_GCA_000492175.2~CP097573.1-#2 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Oscillospirales;f__Oscillospiraceae;g__Lawsonibacter;s__Lawsonibacter sp000492175 [location=2112890..2114418] [ssu_len=1529] [contig_len=3665928]
+# >GB_GCA_000492175.2~CP097573.1-#2 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Oscillospirales;f__Oscillospiraceae;g__Lawsonibacter;s__Lawsonibacter sp000492175 [location=2112890..2114418] [ssu_len=1529] [contig_len=3065928]
 # GGAGGCAGCAGTGGGGAATATTGGGCAATGGGCGCAAGCCTGACCCAGCAACGCCGCGTGAAGGAAGAAGGCTTTCGGGTTGTAAACTTCTTTTCTCAGGGACGAAGCAAGTGACGGTACCTGAGGAATAAGCCACGGCTAACTACGTGCCAGCAGCCGCGGTAATACGTAGGTGGCAAGCGTTATCCGGATTTACTGGGTGTAAAGGGCGTGTAGGCGGG
-# >GB_GCA_000493945.1~AWNW01000006.1 d__Bacteria;p__Hydrogenedentota;c__Hydrogenedentia;o__Hydrogenedentiales;f__Hydrogenedentaceae;g__Hydrogenedens;s__Hydrogenedens terephthalicus [location=38027..39574] [ssu_len=1548] [contig_len=86659]
+# >GB_GCA_000493945.1~AWNW01000055.1 d__Bacteria;p__Hydrogenedentota;c__Hydrogenedentia;o__Hydrogenedentiales;f__Hydrogenedentaceae;g__Hydrogenedens;s__Hydrogenedens terephthalicus [location=38027..39574] [ssu_len=1548] [contig_len=80659]
 # TAGGGAATATTGGACAATGGGCGAAAGCCTGATCCAGCCATGCCGCGTGAGGGATGAAGCCCTTCGGGGTGTAAACCTCTTTTCTGGGGGATGAAAAAGATGAGTAGGAAATGACTCATCCTTGACAGTACCCCAGGAATAAGGAACGGCTAACTCCGTGCCAGCAGCCGCGGTAAGACGGAGGTTCCAAGCGTTGTTCGGATTGACTGGGCGTAAAGGGAGCGCAGGCGGTTGAG
 # >GB_GCA_000493965.1~AWNV01000024.1 d__Bacteria;p__Acidobacteriota;c__Aminicenantia;o__Aminicenantales;f__Aminicenantaceae;g__Aminicenans;s__Aminicenans sakinawicola [location=16870..18417] [ssu_len=1548] [contig_len=42608]
 # AGCAGTGGGGAATTTTGCGCAATGGGCGAAAGCCTGACGCAGCGACGCCGCGTGGAGGATGAAGGCCTTCGGGTTGTAAACTCCTGTCAGAGGAGAAGAATCCCCGAGTAATCGGGGTTGACGGTATCCTCAAAGGAAGCCCCGGCTAACTACGTGCCAGCAGCCGCGGTAATACGTAGGGGGCGAACGTTGCTCGGAATTACTGGGCGTAAAGGGTGCGTAGGTGGCTGAGTA
-# >GB_GCA_000494145.1~AWOE01000013.1 d__Archaea;p__Thermoproteota;c__Nitrososphaeria_A;o__Caldarchaeales;f__Calditenuaceae;g__Calditenuis;s__Calditenuis sp000494145 [location=10546..12034] [ssu_len=1489] [contig_len=32668]
+# >GB_GCA_000494145.1~AWOE01000013.1 d__Archaea;p__Thermoproteota;c__Nitrososphaeria_A;o__Caldarchaeales;f__Calditenuaceae;g__Calditenuis;s__Calditenuis sp000494145 [location=10546..12034] [ssu_len=1489] [contig_len=32068]
 # CGCCCGTAGCCGGCCCGGTGTGTCCCTCGTTAAATCCACGGGCTTAACCCGTGGGCTGCGGGGGATACTACCGGGCTTGGGGGTGGGAGAGGCGCCCGGTATTCCCGGGGTAGGGGTAAAATCCTCTGATCCCGGGAGGACCATCAGTGGCGAAGGCGGGGCGCCAGAACACGCCCGACGGTGAGGGGCGAAAGCTGGGGGAGCAAACGGGATTAGATACCCCGGTAGTCCCAGCTGTAAACGATGCGGGCTAGCTGTCGGGG
 # >GB_GCA_000494185.1~AWOC01000023.1 d__Archaea;p__Thermoproteota;c__Nitrososphaeria_A;o__Caldarchaeales;f__Calditenuaceae;g__AWOC01;s__AWOC01 sp000494185 [location=11503..12993] [ssu_len=1491] [contig_len=14811]
 
@@ -167,7 +159,7 @@
 # TCAAGCCACCCGAGCTGGGGCCTAGCGAGGCCGTGGGGGGTTcgccCCCCACGGTCGAGC
 # TAGGCCCCGGCGAGGGGGGCTAAGTCGACACAAGGTAGCCGTAGGGGAACCTGCGGCTGG
 # ATCACCTCC-t
-# >0001|GB_GCA_000016605.1~CP000682.1 d__Archaea;p__Thermoproteota;c__Thermoprotei_A;o__Sulfolobales;f__Sulfolobaceae;g__Metallosphaera;s__Metallosphaera sedula [location=1705272..1706766] [ssu_len=1495] [contig_len=2191517]
+# >0001|GB_GCA_000010605.1~CP005582.1 d__Archaea;p__Thermoproteota;c__Thermoprotei_A;o__Sulfolobales;f__Sulfolobaceae;g__Metallosphaera;s__Metallosphaera sedula [location=1705272..1706706] [ssu_len=1495] [contig_len=2191517]
 # a-TTCCGGTTGATCCTGCCGGACCCGATCGCTATAGGGGTAGGGCTAAGCCATGGGAGTC
 # GTACGCTCTCGggaAGAGGGCGTGGCGGACGGCTGAGTAACACGTGGCTAACCTGCCCTT
 # CACCCGAGTGGAGGGGAAGTGAGGCCTCTTGCCCCTcgggGTGGGAGGTCGAGCTTCTCC
@@ -193,18 +185,30 @@
 
 
 
-
+# ===================================================================================================
 # Check for required dependencies
+# ===================================================================================================
 check_dependencies() {
   local missing_deps=()
+  local skip_align=false
   
-  # Check for HMMER tools
-  if ! command -v hmmalign >/dev/null 2>&1; then
-    missing_deps+=("hmmalign (part of HMMER suite)")
-  fi
+  # Check if --skip_align is among the arguments
+  for arg in "$@"; do
+    if [ "$arg" = "--skip_align" ]; then
+      skip_align=true
+      break
+    fi
+  done
   
-  if ! command -v esl-reformat >/dev/null 2>&1; then
-    missing_deps+=("esl-reformat (part of HMMER suite)")
+  # Check for HMMER tools only if not skipping alignment
+  if [ "$skip_align" = false ]; then
+    if ! command -v hmmalign >/dev/null 2>&1; then
+      missing_deps+=("hmmalign (part of HMMER suite)")
+    fi
+    
+    if ! command -v esl-reformat >/dev/null 2>&1; then
+      missing_deps+=("esl-reformat (part of HMMER suite)")
+    fi
   fi
   
   # Check for required Unix tools
@@ -222,23 +226,40 @@ check_dependencies() {
     done
     echo "" >&2
     echo "Please install the missing dependencies before running this script." >&2
-    echo "HMMER tools can be obtained from: http://hmmer.org/" >&2
+    if [ "$skip_align" = false ]; then
+      echo "HMMER tools can be obtained from: http://hmmer.org/" >&2
+    fi
     exit 1
   fi
 }
 
 # Run dependency check
+echo ""
+echo "------------------------------------------"
 echo "Checking for required dependencies..."
-check_dependencies
+check_dependencies "$@"
 
 
 
+
+# ===================================================================================================
+# Begin Script
+# ===================================================================================================
+echo ""
+echo "------------------------------------------"
+echo "Starting extract16s..."
 # Start timing the execution
 start_time=$(date +%s)
 
-echo "Starting extract_16s_regions_hmmalign.sh script..."
 
-# Capture command-line arguments
+
+
+
+# ===================================================================================================
+# Parse Inputs
+# ===================================================================================================
+
+# Capture command-line arguments ---------------------------
 input_fna="$1"
 bac_hmm="$2"
 arc_hmm="$3"
@@ -249,7 +270,6 @@ no_require_all_regions=false
 rm_intermediates=false
 trunc_padding=0
 
-# Process arguments
 i=5  # Start after the four required positional arguments
 while [ $i -le $# ]; do
   arg="${!i}"
@@ -297,8 +317,8 @@ echo "  Bacteria HMM: $bac_hmm"
 echo "  Archaea HMM: $arc_hmm"
 echo "  Truncation specification file: $trunc_spec_file"
 
-# After parsing arguments
-# Validate input files
+
+# Validate input files ---------------------------
 if [ ! -f "$input_fna" ]; then
   echo "Error: Input FASTA file '$input_fna' not found."
   exit 1
@@ -319,7 +339,8 @@ if [ ! -f "$trunc_spec_file" ]; then
   exit 1
 fi
 
-# Parse the truncation specification file into variables
+
+# Parse the truncation specification file --------------------------- 
 echo "Truncation specifications:"
 declare -A region_specs
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -370,7 +391,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   fi
 done < "$trunc_spec_file"
 
-# After parsing the truncspec file
+
+# Validate sequence IDs ---------------------------
 if [ -z "$arc_ref" ]; then
   echo "Error: Archaea reference sequence ID not found in truncation specification file."
   exit 1
@@ -381,20 +403,30 @@ if [ -z "$bac_ref" ]; then
   exit 1
 fi
 
-# Define an output directory for intermediate files
+
+
+
+
+# ===================================================================================================
+# Create intermediate directory
+# ===================================================================================================
 intermediates_dir="./Intermediates"
 mkdir -p "$intermediates_dir"
 echo "Created intermediates directory: $intermediates_dir"
 
 
 
-# ------------------------------
-# Alignment Process
-# ------------------------------
+
+# ===================================================================================================
+# Perform alignments
+# ===================================================================================================
+# If we are NOT skipping alignments
 if [ "$skip_align" = false ]; then
+
+  # Split sequences into Bacteria and Archaea ---------------------------
   # Define file paths for split FASTA files
-  bac_fna="${intermediates_dir}/full_seqs_bac.fna"
-  arc_fna="${intermediates_dir}/full_seqs_arc.fna"
+  bac_fna="${intermediates_dir}/00_full_seqs_bac.fna"
+  arc_fna="${intermediates_dir}/00_full_seqs_arc.fna"
 
   echo "Splitting sequences into Bacteria and Archaea based on FASTA headers..."
   # Split sequences into Bacteria and Archaea by examining the headers
@@ -423,114 +455,169 @@ if [ "$skip_align" = false ]; then
     print "Found " bac_count " bacterial sequences and " arc_count " archaeal sequences"
   }' "$input_fna"
 
+  
+  # Align Bacteria ---------------------------
   # Check if files were created and have content
   if [ -s "$bac_fna" ]; then
     echo "Running hmmalign on Bacteria sequences..."
+
     # Run hmmalign on the Bacteria subset
-    hmmalign -o "${intermediates_dir}/align_bac_ssu.sto" \
+    hmmalign -o "${intermediates_dir}/01_align_bac_ssu.sto" \
       "$bac_hmm" "$bac_fna"
-    echo "Bacteria alignment complete: ${intermediates_dir}/align_bac_ssu.sto"
+    echo "Bacteria alignment complete: ${intermediates_dir}/01_align_bac_ssu.sto"
     
-    # Convert the alignment to A2M format (DNA and much easier to deal with that .sto)
+    # Convert the alignment to A2M format 
+    # (this converts it to DNA and .a2m is much easier to deal with than .sto)
     echo "Converting Bacteria alignment to A2M format..."
-    esl-reformat --informat stockholm -d -o "${intermediates_dir}/align_bac_ssu.a2m" a2m "${intermediates_dir}/align_bac_ssu.sto"
-    echo "Bacteria A2M conversion complete: ${intermediates_dir}/align_bac_ssu.a2m"
+    esl-reformat --informat stockholm -d -o "${intermediates_dir}/01_align_bac_ssu.a2m" a2m "${intermediates_dir}/01_align_bac_ssu.sto"
+    echo "Bacteria A2M conversion complete: ${intermediates_dir}/01_align_bac_ssu.a2m"
   else
     echo "Warning: No bacterial sequences found or file is empty."
   fi
 
+  # Align Archaea ---------------------------
   if [ -s "$arc_fna" ]; then
     echo "Running hmmalign on Archaea sequences..."
+
     # Run hmmalign on the Archaea subset
-    hmmalign -o "${intermediates_dir}/align_arc_ssu.sto" \
+    hmmalign -o "${intermediates_dir}/01_align_arc_ssu.sto" \
       "$arc_hmm" "$arc_fna"
-    echo "Archaea alignment complete: ${intermediates_dir}/align_arc_ssu.sto"
+    echo "Archaea alignment complete: ${intermediates_dir}/01_align_arc_ssu.sto"
     
-    # Convert the alignment to A2M format (DNA and much easier to deal with that .sto)
+    # Convert the alignment to A2M format 
+    # (this converts it to DNA and .a2m is much easier to deal with than .sto)
     echo "Converting Archaea alignment to A2M format..."
-    esl-reformat --informat stockholm -d -o "${intermediates_dir}/align_arc_ssu.a2m" a2m "${intermediates_dir}/align_arc_ssu.sto"
-    echo "Archaea A2M conversion complete: ${intermediates_dir}/align_arc_ssu.a2m"
+    esl-reformat --informat stockholm -d -o "${intermediates_dir}/01_align_arc_ssu.a2m" a2m "${intermediates_dir}/01_align_arc_ssu.sto"
+    echo "Archaea A2M conversion complete: ${intermediates_dir}/01_align_arc_ssu.a2m"
 
   else
     echo "Warning: No archaeal sequences found or file is empty."
-  fi
-
-
-  # Check that the two .a2m files exist
-  if [ ! -f "${intermediates_dir}/align_bac_ssu.a2m" ]; then
-    echo "Error: Bacterial alignment file does not exist."
-    exit 1
-  fi
-  if [ ! -f "${intermediates_dir}/align_arc_ssu.a2m" ]; then
-    echo "Error: Archaea alignment file does not exist."
-    exit 1
-  fi
-  # Check that the two .a2m files are not empty
-  if [ ! -s "${intermediates_dir}/align_bac_ssu.a2m" ]; then
-    echo "Error: Bacterial alignment file is empty."
-    exit 1
-  fi
-  if [ ! -s "${intermediates_dir}/align_arc_ssu.a2m" ]; then
-    echo "Error: Archaea alignment file is empty."
-    exit 1
   fi
 fi
 
 
 
 
-# ------------------------------
-# Truncation & Extraction Process
-# ------------------------------
-# We loop through each region originating from the truncation specification file:
+# ===================================================================================================
+# Verify A2M alignments
+# ===================================================================================================
+# Check that the two .a2m files exist
+if [ ! -f "${intermediates_dir}/01_align_bac_ssu.a2m" ]; then
+  echo "Error: Bacterial alignment file does not exist."
+  exit 1
+fi
+if [ ! -f "${intermediates_dir}/01_align_arc_ssu.a2m" ]; then
+  echo "Error: Archaea alignment file does not exist."
+  exit 1
+fi
+# Check that the two .a2m files are not empty
+if [ ! -s "${intermediates_dir}/01_align_bac_ssu.a2m" ]; then
+  echo "Error: Bacterial alignment file is empty."
+  exit 1
+fi
+if [ ! -s "${intermediates_dir}/01_align_arc_ssu.a2m" ]; then
+  echo "Error: Archaea alignment file is empty."
+  exit 1
+fi
+
+
+
+
+# ===================================================================================================
+# Beginning truncation & extraction process
+# ===================================================================================================
+# Here we loop through each region originating from the truncation specification file:
 #   1. Identify the reference sequence and extract that region specified by start and end positions for all sequences for bacteria and archaea seperately.
 #   2. Merge all the truncated sequences together with the same header and the same order as seen in the original input FASTA file, and write it to file.
 #        e.g.   ./InputData/ssu_all_r220_filtered.fna  ->  ./Output/ssu_all_r220_filtered_16s_v3.fna
 # This is done for every region (e.g. V3, V3-V4, V6, V1-V3, etc.)
-# ------------------------------
+echo ""
+echo "------------------------------------------"
+echo "Beginning extraction of 16S regions using alignments..."
 
-echo "Beginning extraction of 16S regions from alignments..."
 
 
+
+
+# ===================================================================================================
+# Define alignment range helper function
+# ===================================================================================================
 # Define a helper function to compute the alignment range.
-# This function scans the reference sequence (from the A2M file) and counts only aligned columns—
-# i.e. those characters that are uppercase (A–Z) or the gap symbol (“-”).
-# When the core count equals the requested start or end (from the .truncspec), it records the alignment index.
+
+# In the .truncspec file, there are start and end indices which are nucleotide positions in the original reference sequence.
+# This function esstentially gets the respective alignment indices for the given nucleotide positions.
+
+# This function scans the reference sequence (from the A2M file):
+#   - Keeps track of alignment index (only uppercase (A–Z) or the gap symbol (“-”))
+#   - Keeps track of the nucleotide index (only uppercase (A–Z) or the lowercase (a–z))
+#   - When the nucleotide index equals the requested start or end (from the .truncspec), it records the alignment index.
+
 get_alignment_range() {
-  local seq="$1"         # The full aligned reference sequence (a single string)
-  local core_start="$2"  # The start position (from truncspec) in the reference's aligned columns
-  local core_end="$3"    # The end position (from truncspec)
+  local aln_seq="$1"         # The full aligned reference sequence (a single string)
+  local nuc_start_index="$2"  # The start position (from truncspec) in the reference's aligned columns
+  local nuc_end_index="$3"    # The end position (from truncspec)
   local pos=0
-  local core_count=0
+  local nuc_count=0
   local aln_start=0
   local aln_end=0
   local char
-  local seq_len=${#seq}
-  for (( i=0; i<seq_len; i++ )); do
-    char="${seq:$i:1}"
-    # Count only uppercase letters and gap symbols ("-") as aligned columns.
-    if [[ "$char" =~ [A-Z-] ]]; then
-      (( core_count++ ))
-      if [ "$core_count" -eq "$core_start" ]; then
-        aln_start=$(( i+1 ))  # Convert to 1-indexed position
+  local aln_seq_len=${#aln_seq}
+
+
+
+  for (( i=0; i<aln_seq_len; i++ )); do
+    char="${aln_seq:$i:1}"
+
+    # If char is uppercase nucleotide or gap
+    if [[ "$char" =~ [ATCG-] ]]; then
+      # Count alignment position
+      (( pos++ ))
+    fi
+
+    # If char is a uppercase nucleotide or a lowercase nucleotide
+    if [[ "$char" =~ [ATCGatcg] ]]; then
+      # Count nucleotide
+      (( nuc_count++ ))
+      # If we have reached the start index, record the alignment index
+      if [ "$nuc_count" -eq "$nuc_start_index" ]; then
+        aln_start=$pos
       fi
-      if [ "$core_count" -eq "$core_end" ]; then
-        aln_end=$(( i+1 ))
+      # If we have reached the end index, record the alignment index and break
+      if [ "$nuc_count" -eq "$nuc_end_index" ]; then
+        aln_end=$pos
         break
       fi
     fi
+
   done
   echo "$aln_start $aln_end"
 }
 
-# Loop over each region (skip ARC_REF_SEQ_ID and BAC_REF_SEQ_ID)
+
+
+
+
+
+# ===================================================================================================
+# Region Loop #1
+# ===================================================================================================
+# For each region (V3, V4, V6, etc.)
 for region in "${!region_specs[@]}"; do
+  # Skip the ARC_REF_SEQ_ID and BAC_REF_SEQ_ID entries
   if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
     continue
   fi
-
+  echo ""
+  echo "------------------------------------------"
   echo "Processing region: $region"
-  # Parse parameters from the region spec string (e.g. "arc_start=512, arc_end=775, bac_start=346, bac_end=574, min_len=250, max_len=300")
+
+
+
+  # ===================================================================================================
+  # Parse .truncspec parameters for the current region
+  # ===================================================================================================
+  # Parse parameters from the trunc spec string 
+  # (e.g. "arc_start=512, arc_end=775, bac_start=346, bac_end=574, min_len=250, max_len=300")
   arc_start=$(echo "${region_specs[$region]}" | grep -oE 'arc_start=[0-9]+' | cut -d'=' -f2)
   arc_end=$(echo "${region_specs[$region]}" | grep -oE 'arc_end=[0-9]+' | cut -d'=' -f2)
   bac_start=$(echo "${region_specs[$region]}" | grep -oE 'bac_start=[0-9]+' | cut -d'=' -f2)
@@ -541,98 +628,197 @@ for region in "${!region_specs[@]}"; do
   echo "  Archaea region positions: $arc_start to $arc_end"
   echo "  Valid sequence length range: $min_len to $max_len bp"
 
-  # ---- Bacterial reference and extraction ----
+
+
+
+  # ===================================================================================================
+  # Get Bacterial alignment indices
+  # ===================================================================================================
+  # Here we use Bacterial reference sequence's aligned sequence to compute the alignment indices
+
   # Find the bacterial reference record (its header should contain the $bac_ref substring)
-  ref_bac_record=$(awk -v ref="$bac_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/align_bac_ssu.a2m")
+  ref_bac_record=$(awk -v ref="$bac_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/01_align_bac_ssu.a2m")
   if [ -z "$ref_bac_record" ]; then
-    echo "Error: Bacterial reference sequence not found for region $region."
+    echo "Error: Bacterial reference sequence not found in 01_align_bac_ssu.a2m"
     exit 1
   fi
   # Remove the header and newlines to get one continuous sequence string
   ref_bac_seq=$(echo "$ref_bac_record" | sed '1d' | tr -d '\n')
-  # Compute the alignment index range for the bacterial reference using the helper function
+  # Compute the alignment index range for this region based on the Bacterial reference sequence's aligned sequence
+  # (use helper function get_alignment_range)
   read bac_aln_start bac_aln_end < <(get_alignment_range "$ref_bac_seq" "$bac_start" "$bac_end")
   echo "  Bacterial alignment indices: $bac_aln_start to $bac_aln_end"
 
-  # ---- Archaeal reference and extraction ----
-  # Similarly, find the archaeal reference record (header contains $arc_ref)
-  ref_arc_record=$(awk -v ref="$arc_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/align_arc_ssu.a2m")
+
+
+
+  # ===================================================================================================
+  # Get Archaeal alignment indices
+  # ===================================================================================================
+  # Here we use Archaeal reference sequence's aligned sequence to compute the alignment indices
+
+  # Find the archaeal reference record (its header should contain the $arc_ref substring)
+  ref_arc_record=$(awk -v ref="$arc_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/01_align_arc_ssu.a2m")
   if [ -z "$ref_arc_record" ]; then
-    echo "Error: Archaeal reference sequence not found for region $region."
+    echo "Error: Archaeal reference sequence not found in 01_align_arc_ssu.a2m"
     exit 1
   fi
+  # Remove the header and newlines to get one continuous sequence string
   ref_arc_seq=$(echo "$ref_arc_record" | sed '1d' | tr -d '\n')
+  # Compute the alignment index range for this region based on the Archaeal reference sequence's aligned sequence
+  # (use helper function get_alignment_range)
   read arc_aln_start arc_aln_end < <(get_alignment_range "$ref_arc_seq" "$arc_start" "$arc_end")
   echo "  Archaeal alignment indices: $arc_aln_start to $arc_aln_end"
 
-  # ---- Extract truncated regions from bacterial and archaeal alignments ----
-  # For each alignment file, we extract the substring from the computed alignment indices.
-  # The extraction is done on the full record (FASTA format), then we post-process:
-  #    - Remove any '-' and '.' characters
-  #    - Convert the resulting sequence to uppercase
 
-  echo "  Extracting truncated regions from bacterial and archaeal alignments..."
 
-  # Extract bacterial truncated sequences into a temporary file
-  truncated_bac_file="${intermediates_dir}/truncated_bac_${region}.fna"
-  echo "  Extracting bacterial sequences to: $truncated_bac_file"
-  awk -v start="$bac_aln_start" -v end="$bac_aln_end" 'BEGIN {RS=">"; ORS=""}
-  NR > 1 {
-    n = split($0, lines, "\n")
-    header = lines[1]
-    # Remove the index prefix (e.g., "0002|") from the header
-    sub(/^[0-9]+\|/, "", header)
-    seq = ""
-    for(i=2; i<=n; i++){
-      seq = seq lines[i]
-    }
-    sub_seq = substr(seq, start, end - start + 1)
-    gsub(/[-.]/, "", sub_seq)
-    # Convert to uppercase using the system tr command
-    cmd = "echo " sub_seq " | tr \"[:lower:]\" \"[:upper:]\""
-    cmd | getline sub_seq
-    close(cmd)
-    print ">" header "\n" sub_seq
-  }' "${intermediates_dir}/align_bac_ssu.a2m" > "$truncated_bac_file"
-
-  # Extract archaeal truncated sequences into a temporary file
-  truncated_arc_file="${intermediates_dir}/truncated_arc_${region}.fna"
-  echo "  Extracting archaeal sequences to: $truncated_arc_file"
-  awk -v start="$arc_aln_start" -v end="$arc_aln_end" 'BEGIN {RS=">"; ORS=""}
-  NR > 1 {
-    n = split($0, lines, "\n")
-    header = lines[1]
-    # Remove the index prefix (e.g., "0002|") from the header
-    sub(/^[0-9]+\|/, "", header)
-    seq = ""
-    for(i=2; i<=n; i++){
-      seq = seq lines[i]
-    }
-    sub_seq = substr(seq, start, end - start + 1)
-    gsub(/[-.]/, "", sub_seq)
-    cmd = "echo " sub_seq " | tr \"[:lower:]\" \"[:upper:]\""
-    cmd | getline sub_seq
-    close(cmd)
-    print ">" header "\n" sub_seq
-  }' "${intermediates_dir}/align_arc_ssu.a2m" > "$truncated_arc_file"
-
-  # ---- Merge truncated sequences in original FASTA order ----
-  # The original input FASTA file has the desired header order.
-  merged_output="${intermediates_dir}/02_reordered_truncated_${region}.fna"
-  echo "  Merging bacterial and archaeal sequences in original FASTA order..."
-  echo "  Writing merged output to: $merged_output"
+  # ===================================================================================================
+  # Extract truncated regions from the bacterial alignment
+  # ===================================================================================================
+  # For every record in the Bacterial alignment file (Intermediates/01_align_bac_ssu.a2m) we extract the current region
+  # This is done using the Bacterial alignment indices: $bac_aln_start to $bac_aln_end
+  # The extracted sequence is written to Intermediates/02_truncated_bac_${region}.fna
+  # The alignment indices count uppercase nucleotides and gaps, but NOT lowercase nucleotides.
+  # When outputting the sequence, we write all nucleotides (ignore gaps) and convert all lowercase nucleotides to uppercase.
+  # We also remove any index prefix (e.g. "112|" or "0002|") from the headers
+  # Headers are written as found in the alignment file, without the index prefix.
   
-    # Combine truncated bacterial and archaeal sequences into one temporary file
-  joined_truncated_file="${intermediates_dir}/01_joined_truncated_${region}.fna"
+  # Extract truncated sequences to Intermediates/02_truncated_bac_${region}.fna
+  truncated_bac_file="${intermediates_dir}/02_truncated_bac_${region}.fna"
+  echo " Extracting truncated bacterial regions to: $truncated_bac_file"
+
+  awk -v start="$bac_aln_start" -v end="$bac_aln_end" '
+  BEGIN {
+      RS = ">"
+      ORS = ""
+  }
+  NR > 1 {
+      # Split record into header and sequence lines
+      pos = index($0, "\n")
+      header = substr($0, 1, pos-1)
+      seq = substr($0, pos+1)
+      gsub(/\n/, "", seq)  # Remove all newlines from sequence
+      
+      # Remove the index prefix from header
+      sub(/^[0-9]+\|/, "", header)
+      
+      # Extract the region between start and end positions
+      # Count only uppercase and gaps for positioning
+      current_pos = 0
+      extracted = ""
+      
+      for (i = 1; i <= length(seq); i++) {
+          char = substr(seq, i, 1)
+          if (char != "." && (char ~ /[A-Za-z-]/)) {
+              if (char !~ /[a-z]/) {  # Count uppercase and gaps only
+                  current_pos++
+              }
+              
+              # If within our target region, add to extracted sequence
+              if (current_pos >= start && current_pos <= end) {
+                  if (char != "-") {  # Ignore gaps when extracting
+                      # Convert lowercase to uppercase
+                      if (char ~ /[a-z]/) {
+                          char = toupper(char)
+                      }
+                      extracted = extracted char
+                  }
+              }
+          }
+      }
+      
+      # Output the header and extracted sequence
+      print ">" header "\n" extracted "\n"
+  }' "${intermediates_dir}/01_align_bac_ssu.a2m" > "$truncated_bac_file"
+
+
+
+
+  # ===================================================================================================
+  # Extract truncated regions from the archaeal alignment
+  # ===================================================================================================
+  # For every record in the Archaeal alignment file (Intermediates/01_align_arc_ssu.a2m) we extract the current region
+  # This is done using the Archaeal alignment indices: $arc_aln_start to $arc_aln_end
+  # The extracted sequence is written to Intermediates/02_truncated_arc_${region}.fna
+  # The alignment indices count uppercase nucleotides and gaps, but NOT lowercase nucleotides.
+  # When outputting the sequence, we write all nucleotides (ignore gaps) and convert all lowercase nucleotides to uppercase.
+  # We also remove any index prefix (e.g. "112|" or "0002|") from the headers
+  # Headers are written as found in the alignment file, without the index prefix.
+  
+  # Extract truncated sequences to Intermediates/02_truncated_arc_${region}.fna
+  truncated_arc_file="${intermediates_dir}/02_truncated_arc_${region}.fna"
+  echo " Extracting truncated archaeal regions to: $truncated_arc_file"
+
+  awk -v start="$arc_aln_start" -v end="$arc_aln_end" '
+  BEGIN {
+      RS = ">"
+      ORS = ""
+  }
+  NR > 1 {
+      # Split record into header and sequence lines
+      pos = index($0, "\n")
+      header = substr($0, 1, pos-1)
+      seq = substr($0, pos+1)
+      gsub(/\n/, "", seq)  # Remove all newlines from sequence
+      
+      # Remove the index prefix from header
+      sub(/^[0-9]+\|/, "", header)
+      
+      # Extract the region between start and end positions
+      # Count only uppercase and gaps for positioning
+      current_pos = 0
+      extracted = ""
+      
+      for (i = 1; i <= length(seq); i++) {
+          char = substr(seq, i, 1)
+          if (char != "." && (char ~ /[A-Za-z-]/)) {
+              if (char !~ /[a-z]/) {  # Count uppercase and gaps only
+                  current_pos++
+              }
+              
+              # If within our target region, add to extracted sequence
+              if (current_pos >= start && current_pos <= end) {
+                  if (char != "-") {  # Ignore gaps when extracting
+                      # Convert lowercase to uppercase
+                      if (char ~ /[a-z]/) {
+                          char = toupper(char)
+                      }
+                      extracted = extracted char
+                  }
+              }
+          }
+      }
+      
+      # Output the header and extracted sequence
+      print ">" header "\n" extracted "\n"
+  }' "${intermediates_dir}/01_align_arc_ssu.a2m" > "$truncated_arc_file"
+
+
+
+
+
+  # ===================================================================================================
+  # Merge truncated sequences in original FASTA order
+  # ===================================================================================================
+  # Now we have two files for this region (e.g. 02_truncated_bac_V4.fna and 02_truncated_arc_V4.fna)
+  # We want to put all the truncated sequences in the same order as they appear in the original input FASTA file
+  # We do this by joining the two files and then sorting by the original header order
+  
+  # First, simply concatenate the truncated bacterial and archaeal sequences from 
+  # the two files (e.g. 02_truncated_bac_V4.fna and 02_truncated_arc_V4.fna)
+  # into a single file (e.g. 03_joined_truncated_V4.fna)
+  joined_truncated_file="${intermediates_dir}/03_joined_truncated_${region}.fna"
   cat "$truncated_bac_file" "$truncated_arc_file" > "$joined_truncated_file"
 
+  # Now we will sort the joined truncated sequences by the original header order
+  # Output file is Intermediates/04_reordered_truncated_${region}.fna
+  merged_output="${intermediates_dir}/04_reordered_truncated_${region}.fna"
+
   # Merge truncated sequences in original FASTA order.
-  # We use the original input FASTA file to preserve the header order.
-  # First, load all truncated sequences (from both bacteria and archaea)
-  # into an associative array keyed by header (with the index prefix already removed).
+  # We use the original input FASTA file $input_fna to preserve the header order.
+  # First, load all truncated sequences (from both bacteria and archaea) into an associative array keyed by header.
   # Then, for each record in the input FASTA, we extract the header (without the ">" character)
   # and, if a corresponding truncated record exists, print the original header and its truncated sequence.
-    # Merge truncated sequences in original FASTA order with debug output
   awk -v OFS="\n" '
     BEGIN {
       RS=">"; ORS="";
@@ -666,93 +852,64 @@ for region in "${!region_specs[@]}"; do
     }
   ' "$joined_truncated_file" "$input_fna" > "$merged_output"
 
-
-
   echo "  Region '$region' extraction complete. Output written to: $merged_output"
 done
 
-echo "Extraction completed for all regions."
 
 
 
 
-# ------------------------------
-# Filtering and Output Generation
-# ------------------------------
-# 1. For each region (e.g. V3, V3-V4), the truncated sequences are filtered 
-#  - The truncated sequences found in ./Intermediates/reordered_truncated_{REGION}.fna are filtered
-#  - Filters:
-#    - Length: min_len-max_len+2*trunc_padding bp   (based on the .truncspec and trunc_padding)
-#    - Ambiguous base content: 0%   (unless --no_filter_ambiguous is used)
-#  - The truncated sequences that pass the filter are written to ./Intermediates/03_filtered_truncated_{REGION_NAME}.fna
+# ===================================================================================================
+# Completed extraction for all regions
+# ===================================================================================================
+# Now for each region we have a file with the truncated sequences of that region in the order of the original input FASTA file
+echo "Completed extraction for all regions."
+echo "------------------------------------------"
+echo ""
 
-# 2. The full sequences are filtered
-#  - The full sequences from the original FASTA file (provided as $input_fna) are filtered
-#  - Filters:
-#    - Ambiguous base content: 0%   (unless --no_filter_ambiguous is used)
-#  - The full sequences that pass the filter are written to ./Intermediates/filtered_full_seqs.fna
-#  (regardless of whether --no_filter_ambiguous is used, ./Intermediates/filtered_full_seqs.fna is written)
 
-# 3. Seqeuences are further filtered ensuring they passed for all regions
-#  - If --no_require_all_regions flag is NOT given:
-#    - For each sequence, we check if it is present in all regions (including the full sequences)
-#      - This is done by looking in files: 
-#        - ./Intermediates/filtered_full_seqs.fna
-#        - ./Intermediates/03_filtered_truncated_{REGION_NAME}.fna
-#    - If a sequence is present in all filtered files, it is written to the ./Output/*.fasta files
-#    - This means that every ./Output/*.fasta files has the same set of sequences with the same headers in the same order as each other, but difference DNA sequences
-#  - If --no_require_all_regions flag is given:
-#    - These files are copied (and renamed) to ./Output/
-#        - ./Intermediates/filtered_full_seqs.fna -> ./Output/FULL_seqs.fasta
-#        - ./Intermediates/03_filtered_truncated_{REGION_NAME}.fna -> ./Output/{REGION}_seqs.fasta
-#  - All .fasta output files are written to ./Output/
-#    - ./Output/{REGION}_seqs.fasta
-#    - ./Output/FULL_seqs.fasta
-#  (regardless of whether --no_require_all_regions is used, all output files are written)
 
-# 4. The about.txt file is written
-#  - The ./Output/about.txt file is written which summarizes the entire processing run of the 16S rRNA region extraction.
-#  - The file contains the following information:
-#    - Lists the key input parameters used by the script:
-#      • Input FASTA file: The original sequence file.
-#      • Bacteria HMM and Archaea HMM: The Hidden Markov Model files used for sequence alignment.
-#      • Truncation specification file: Defines the regions to extract with their start/end positions
-#        and length boundaries.
-#      • Option flags: Indicates if alignment was skipped, ambiguous filtering was disabled,
-#        whether sequences from all regions are required, if intermediate files were removed,
-#        and the value of truncation padding.
-#    - Reports the reference sequence IDs for Archaea and Bacteria.
-#    - Iterates through each defined region (e.g., V3, V3-V4, etc.) and prints its extraction
-#      parameters such as start and end positions, and the expected minimum and maximum lengths.
-#    - Displays the total number of sequences from the original input FASTA.
-#    - Shows how many sequences passed all filters overall, along with the corresponding percentage.
-#    - For each region, prints:
-#      • The number of sequences that passed the filters.
-#      • The number (and percentage) of sequences that were filtered out.
-#    - Lists the specific filtering criteria for each region:
-#      • The length criteria (min-max bp).
-#      • Whether the ambiguous base content filter was applied (<1% ambiguous bases).
-#      • Whether sequences were required to be present in all regions.
-#    - Logs the date and time when the processing was completed.
-# ------------------------------------------------------------------------------
 
-echo "Starting filtering and output generation process..."
 
-# Define an output directory for final output files
+
+
+
+# ===================================================================================================
+# Create output directory
+# ===================================================================================================
 output_dir="./Output"
 mkdir -p "$output_dir"
 echo "Created output directory: $output_dir"
 
-#############################################
-# 1. Filter truncated sequences per region
-#############################################
+
+
+
+
+
+
+# ===================================================================================================
+# Region Loop #2
+# ===================================================================================================
+# For each region (V3, V4, V6, etc.)
 for region in "${!region_specs[@]}"; do
   # Skip the ARC_REF_SEQ_ID and BAC_REF_SEQ_ID entries
   if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
     continue
   fi
-  
+  echo ""
+  echo "------------------------------------------"
   echo "Filtering truncated sequences for region: $region"
+
+
+
+  # ===================================================================================================
+  # Filter truncated sequences per region
+  # ===================================================================================================
+  # For each region, we filter the truncated sequences based on:
+  #  - Length must be between (min_len+2*trunc_padding) and (max_len+2*trunc_padding)
+  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
+  # The filtered sequences are written to ./Intermediates/05_filtered_truncated_{REGION_NAME}.fna
+
   # Extract min and max lengths from the region specification
   min_len=$(echo "${region_specs[$region]}" | grep -oE 'min_len=[0-9]+' | cut -d'=' -f2)
   max_len=$(echo "${region_specs[$region]}" | grep -oE 'max_len=[0-9]+' | cut -d'=' -f2)
@@ -760,11 +917,13 @@ for region in "${!region_specs[@]}"; do
   lower_bound=$(( min_len + 2 * trunc_padding ))
   upper_bound=$(( max_len + 2 * trunc_padding ))
   
-  input_file="${intermediates_dir}/02_reordered_truncated_${region}.fna"
-  output_file="${intermediates_dir}/03_filtered_truncated_${region}.fna"
+  # Input and output files
+  input_file="${intermediates_dir}/04_reordered_truncated_${region}.fna"
+  output_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
   
+  # If ambiguous base filtering is disabled
   if [ "$no_filter_ambiguous" = true ]; then
-    # Only apply length filtering when ambiguous base filtering is disabled
+    # Apply length filtering only
     awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
     {
       if($0 != ""){
@@ -779,6 +938,8 @@ for region in "${!region_specs[@]}"; do
         }
       }
     }' "$input_file" > "$output_file"
+
+  # If ambiguous base filtering is enabled
   else
     # Apply both length and ambiguous-base filtering (only A, T, C, G allowed)
     awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
@@ -799,15 +960,34 @@ for region in "${!region_specs[@]}"; do
   echo "  Filtered truncated sequences written to: $output_file"
 done
 
-#############################################
-# 2. Filter full sequences from the input FASTA
-#############################################
+
+
+
+
+
+
+# ===================================================================================================
+# Filter full sequences
+# ===================================================================================================
+# We filter the full length sequences based on:
+#  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
+# The filtered sequences are written to ./Intermediates/06_filtered_full_seqs.fna
+
+echo ""
+echo "------------------------------------------"
 echo "Filtering full sequences from input FASTA..."
-full_filtered="${intermediates_dir}/filtered_full_seqs.fna"
+
+# Output file
+full_filtered="${intermediates_dir}/06_filtered_full_seqs.fna"
+
+# If ambiguous base filtering is disabled
 if [ "$no_filter_ambiguous" = true ]; then
-  # No ambiguous filtering: simply copy the input FASTA
+  # Simply copy the input FASTA
   cp "$input_fna" "$full_filtered"
+
+# If ambiguous base filtering is enabled
 else
+  # Filter based on ambiguous base content
   awk 'BEGIN { RS=">"; ORS="" }
   {
     if($0 != ""){
@@ -826,35 +1006,84 @@ else
 fi
 echo "  Filtered full sequences written to: $full_filtered"
 
-#############################################
-# 3. Cross-region filtering (or direct copy if --no_require_all_regions)
-#############################################
+
+
+
+
+
+
+# ===================================================================================================
+# Cross-region filtering
+# ===================================================================================================
+# Sequences are further filtered ensuring they were successfully truncated and filtered for all regions
+# This step is skipped if the --no_require_all_regions flag is given
+
+# If --no_require_all_regions flag is NOT given:
+#  - For each sequence, we check if it is present in all regions (including the full sequences)
+#    - This is done by looking in files: 
+#      - ./Intermediates/05_filtered_truncated_{REGION_NAME}.fna
+#      - ./Intermediates/06_filtered_full_seqs.fna
+#  - If a sequence is present in all filtered files, it is written to the ./Output/*.fasta files
+#  - This means that every ./Output/*.fasta files has the same set of sequences with the same headers in the same order as each other, but different DNA sequences
+
+# If --no_require_all_regions flag is given:
+#  - These files are copied (and renamed) to ./Output/
+#      - ./Intermediates/05_filtered_truncated_{REGION_NAME}.fna -> ./Output/{REGION}_seqs.fasta
+#      - ./Intermediates/06_filtered_full_seqs.fna -> ./Output/FULL_seqs.fasta
+
+# All .fasta output files are written to ./Output/
+#  - ./Output/{REGION}_seqs.fasta
+#  - ./Output/FULL_seqs.fasta
+
+# If we do not require all regions -----------------------------
 if [ "$no_require_all_regions" = true ]; then
-  echo "Skipping cross-region filtering as --no_require_all_regions flag is set."
-  # Copy the filtered full sequences and each region’s truncated sequences to the Output directory
+
+  echo ""
+  echo "------------------------------------------"
+  echo "Outputting sequences to Output directory..."
+  # Copy the filtered full sequences to the Output directory
   cp "$full_filtered" "$output_dir/FULL_seqs.fasta"
+  echo "  Copied filtered full sequences to: $output_dir/FULL_seqs.fasta"
+
+  # Copy the filtered truncated sequences for each region to the Output directory
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
-    region_filtered="${intermediates_dir}/03_filtered_truncated_${region}.fna"
+    region_filtered="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     cp "$region_filtered" "$output_dir/${region}_seqs.fasta"
     echo "  Copied filtered truncated sequences for region $region to: $output_dir/${region}_seqs.fasta"
   done
+
+
+
+# If we do require all regions -----------------------------
 else
+  # Filter all the sequences to ensure they are present in all regions and write them in ./Output/
+
+  # Copy the filtered full sequences to the Output directory
+  echo ""
+  echo "------------------------------------------"
   echo "Performing cross-region filtering to retain only sequences present in all filtered files..."
+
+
   # Start by extracting headers from the filtered full sequences file
   temp_common="${intermediates_dir}/common_headers.txt"
   grep '^>' "$full_filtered" | sed 's/^>//' > "$temp_common"
   
   # For each region, intersect its headers with the common header list
+  # This creates a progressively smaller list of headers that are present in ALL regions
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
-    region_file="${intermediates_dir}/03_filtered_truncated_${region}.fna"
+    region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     temp_headers="${intermediates_dir}/headers_${region}.txt"
+    
+    # Extract headers from the current region file
     grep '^>' "$region_file" | sed 's/^>//' > "$temp_headers"
+    
+    # Intersect with running list of common headers
     intersect="${intermediates_dir}/common_tmp.txt"
     grep -Fxf "$temp_common" "$temp_headers" > "$intersect"
     mv "$intersect" "$temp_common"
@@ -863,6 +1092,8 @@ else
   echo "  Common headers count: $(wc -l < "$temp_common")"
   
   # Define a helper function to filter a FASTA file by common headers
+  # This function takes an input FASTA file and outputs only sequences
+  # whose headers are in the common headers list
   filter_by_common_headers() {
     local infile="$1"
     local outfile="$2"
@@ -878,20 +1109,27 @@ else
         n = split($0, lines, "\n")
         header = lines[1]
         if(header in headers){
-          printf(">%s\n", $0)
+          seq = ""
+          for(i=2; i<=n; i++){
+            seq = seq lines[i]
+          }
+          print ">" header "\n" seq "\n"
         }
       }
     }' "$infile" > "$outfile"
   }
   
-  # Filter the full sequences and each region’s truncated sequences using the common headers
+  # Apply the filtering to each file
+  # First, filter the full sequences
   filter_by_common_headers "$full_filtered" "$output_dir/FULL_seqs.fasta"
   echo "  Full sequences after cross-region filtering written to: $output_dir/FULL_seqs.fasta"
+  
+  # Then for each region, filter its sequences
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
-    region_file="${intermediates_dir}/03_filtered_truncated_${region}.fna"
+    region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     output_region="$output_dir/${region}_seqs.fasta"
     filter_by_common_headers "$region_file" "$output_region"
     echo "  Filtered truncated sequences for region $region written to: $output_region"
@@ -901,9 +1139,20 @@ else
   rm "$temp_common"
 fi
 
-#############################################
-# 4. Generate about.txt summary file
-#############################################
+
+
+
+
+
+# ===================================================================================================
+# Generate about file
+# ===================================================================================================
+# Writes a summary file to ./Output/about.txt
+# Contains:
+#  - Input parameters and options used
+#  - Reference sequence IDs and region parameters
+#  - Sequence counts and filtering statistics
+#  - Processing details and completion time
 echo "Generating about.txt summary file..."
 {
   echo "16S rRNA Region Extraction Summary"
@@ -972,7 +1221,7 @@ echo "Generating about.txt summary file..."
       continue
     fi
     if [ "$no_require_all_regions" = true ]; then
-      region_file="${intermediates_dir}/03_filtered_truncated_${region}.fna"
+      region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     else
       region_file="$output_dir/${region}_seqs.fasta"
     fi
@@ -989,9 +1238,9 @@ echo "about.txt written to: $output_dir/about.txt"
 
 
 
-
-
+# ===================================================================================================
 # Clean up intermediate files if requested
+# ===================================================================================================
 if [ "$rm_intermediates" = true ]; then
   echo "Cleaning up intermediate files..."
   rm -rf "${intermediates_dir}"
@@ -1001,11 +1250,17 @@ else
   echo "Use --rm_intermediates flag to remove these files automatically."
 fi
 
-# Calculate and display execution time
+
+
+
+# ===================================================================================================
+# End script
+# ===================================================================================================
+# Calculate execution time
 end_time=$(date +%s)
 execution_time=$((end_time - start_time))
 minutes=$((execution_time / 60))
 seconds=$((execution_time % 60))
-
+# Print done and execution time
 echo "Done. All output files have been written to: $output_dir"
 echo "Total execution time: ${minutes} minutes and ${seconds} seconds."

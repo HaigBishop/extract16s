@@ -10,5 +10,5 @@
 
 ARC_REF_SEQ_ID: RS_GCF_000025685.1~NC_013967.1
 BAC_REF_SEQ_ID: RS_GCF_000194175.1~NZ_AEZI02000002.1
-V4: arc_start=471, arc_end=724, bac_start=530, bac_end=782, min_len=245, max_len=260
-V3-V4: arc_start=336, arc_end=722, bac_start=354, bac_end=780, min_len=385, max_len=445
+V4: arc_start=472, arc_end=725, bac_start=531, bac_end=783, min_len=245, max_len=260
+V3-V4: arc_start=337, arc_end=723, bac_start=355, bac_end=781, min_len=385, max_len=445

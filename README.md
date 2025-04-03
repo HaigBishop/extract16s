@@ -16,7 +16,7 @@ Key features:
 
 ## Requirements
 
-- **HMMER suite**: Provides `hmmalign` and `esl-reformat` tools
+- **HMMER suite**: Provides `hmmalign` and `esl-reformat`. [User Guide](http://eddylab.org/software/hmmer/Userguide.pdf)
 - **Unix tools**: awk, bc, grep, sed, tr
 
 ## Installation
