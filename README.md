@@ -13,7 +13,7 @@ Key features:
 - Filters sequences by length and ambiguous base content
 - Extracts multiple variable regions (V3, V4, V3-V4, etc.) in a single run
 
-This script can take ~1 hour to run, or ~2 minutes with `--skip_align`.
+This script can take ~90 minutes to run, or ~2 minutes if using `--skip_align`.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ extract16s/
 ├── InputData/
 │   ├── arc_16s.hmm                # Archaeal 16S HMM file
 │   ├── bac_16s.hmm                # Bacterial 16S HMM file
-│   ├── ssu_all_filtered.fna       # Input FASTA file
+│   ├── ssu_all_r220_filtered.fna       # Input FASTA file
 │   └── trunc_spec_v3_v3-v4.truncspec  # Truncation specification file
 │
 ├── Scripts/
@@ -68,7 +68,7 @@ bash ./Scripts/extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [
 
 ### Options
 
-- `--skip_align`: Skip alignment process (use existing alignments in Intermediates/)
+- `--skip_align`: Skip alignment process (if run before, this can use existing alignments in Intermediates/)
 - `--no_filter_ambiguous`: Skip filtering by ambiguous base content
 - `--no_require_all_regions`: Don't require sequences to be successfully extracted for all regions
 - `--rm_intermediates`: Remove intermediate files after processing
@@ -78,12 +78,18 @@ bash ./Scripts/extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [
 ### Example
 
 ```bash
+# Ensure UNIX format
+find . -type f -name "*.fna" -exec dos2unix {} +
+find . -type f -name "*.hmm" -exec dos2unix {} +
+find . -type f -name "*.sh" -exec dos2unix {} +
+find . -type f -name "*.truncspec" -exec dos2unix {} +
+# Run extract16s
 bash ./Scripts/extract16s.sh \
-     ./InputData/ssu_all_filtered.fna \
+     ./InputData/ssu_all_r220_filtered.fna \
      ./InputData/bac_16s.hmm \
      ./InputData/arc_16s.hmm \
      ./InputData/trunc_spec_v3_v3-v4.truncspec \
-     --trunc_padding 15 --rm_intermediates
+     --trunc_padding 15 --verbose
 ```
 
 ## Input Files
