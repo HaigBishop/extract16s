@@ -152,10 +152,21 @@ The tool generates several output files in the `Output/` directory:
 6. Optionally, sequences absent in any region are filtered out
 7. Final files are written to the Output directory
 
-
 ## License
 
-This tool is provided under the MIT License.
+This tool is licensed under the [GNU General Public License v3.0 (GPLv3)](https://www.gnu.org/licenses/gpl-3.0.html)
+
+#### Dependencies & Included Data
+
+This project includes or depends on the following third-party software and data:
+
+- HMMER suite (http://hmmer.org/)
+  - License: 3-clause BSD license
+  - Used for sequence alignment and HMM operations
+
+- Barrnap HMM models (https://github.com/tseemann/barrnap/)
+  - License: GNU General Public License v3.0
+  - Modified subset used for 16S rRNA gene detection
 
 ## Contact
 
