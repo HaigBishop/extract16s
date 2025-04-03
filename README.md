@@ -1,10 +1,10 @@
-# extract16s
+# extract16s 
 
 A tool for extracting variable regions from 16S rRNA sequences.
 
 ## Overview
 
-`extract16s` is a command-line tool that uses Hidden Markov Models (HMMs) to extract specific variable regions from 16S rRNA gene sequences. The tool aligns input sequences to reference HMMs and then extracts regions of interest defined in a truncation specification file (.truncspec).
+`extract16s` (v1.0.0) is a command-line tool that uses Hidden Markov Models (HMMs) to extract specific variable regions from 16S rRNA gene sequences. The tool aligns input sequences to reference HMMs and then extracts regions of interest defined in a truncation specification file (.truncspec).
 
 Key features:
 - Handles bacterial and archaeal 16S rRNA sequences seperately
@@ -12,6 +12,8 @@ Key features:
 - Uses HMMs for alignment and region extraction
 - Filters sequences by length and ambiguous base content
 - Extracts multiple variable regions (V3, V4, V3-V4, etc.) in a single run
+
+This script can take ~1 hour to run, or ~2 minutes with `--skip_align`.
 
 ## Requirements
 
@@ -43,11 +45,12 @@ extract16s/
 ├── Intermediates/                 # Created during execution
 │   └── ...                        # Various intermediate files
 │
-└── Output/                        # Final output directory
+└── Output/                       # Final output directory
     ├── FULL_seqs.fasta           # Filtered full-length sequences
     ├── V3_seqs.fasta             # Extracted V3 region sequences
     ├── V3-V4_seqs.fasta          # Extracted V3-V4 region sequences
-    └── about_extraction.txt                 # Summary of processing details
+    ├── failed_FULL_seqs.fasta    # Sequences that failed filtering
+    └── about_extraction.txt      # Summary of processing details
 ```
 
 ## Usage

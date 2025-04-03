@@ -79,7 +79,8 @@
 #  └── Output/
 #      ├── FULL_seqs.fasta                # Full length sequences (same as input FASTA file, but filtered)
 #      ├── {REGION_NAME}_seqs.fasta       # Extracted sequences for each region
-#      └── about_extraction.txt                      # Summary of processing details
+#      ├── failed_FULL_seqs.fasta         # Sequences that failed filtering
+#      └── about_extraction.txt           # Summary of processing details
 
 
 # More example usage:
@@ -1139,10 +1140,51 @@ else
     filter_by_common_headers "$region_file" "$output_region"
     verbose_echo "  Filtered truncated sequences for region $region written to: $output_region"
   done
-  
+
   # Clean up temporary common headers file
   rm "$temp_common"
 fi
+
+
+
+
+
+# ===================================================================================================
+# Write failed sequences
+# ===================================================================================================
+# Write the "failed" sequences that didn't pass filtering
+# Specifically, write the full length sequences that are present in the input file but not in the filtered output
+verbose_echo "  Writing sequences that failed filtering..."
+failed_output="$output_dir/failed_FULL_seqs.fasta"
+
+# Extract headers from the filtered FASTA file into a temporary file
+grep "^>" "$output_dir/FULL_seqs.fasta" | sed 's/^>//' > "${intermediates_dir}/passed_headers.txt"
+
+# Compare input against filtered and write sequences not in filtered to failed output
+awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
+  # Load passed headers into array
+  while ((getline line < passed) > 0) {
+    headers[line] = 1
+  }
+  RS=">"; ORS=""
+}
+{
+  if ($0 != "") {
+    n = split($0, lines, "\n")
+    header = lines[1]
+    # If header NOT in the passed headers, write to failed output
+    if (!(header in headers)) {
+      seq = ""
+      for (i=2; i<=n; i++) {
+        seq = seq lines[i]
+      }
+      print ">" header "\n" seq "\n"
+    }
+  }
+}' "$input_fna" > "$failed_output"
+
+# Clean up temporary headers file
+rm "${intermediates_dir}/passed_headers.txt"
 
 
 
@@ -1205,7 +1247,7 @@ verbose_echo "Generating about_extraction.txt summary file..."
     echo "    Bacteria positions: $bac_start to $bac_end"
     echo "    Archaea positions: $arc_start to $arc_end"
     echo "    Valid sequence lengths (without any padding): $min_len to $max_len bp"
-    echo "    Expected sequence length (with padding): $effective_min to $effective_max bp"
+    echo "    Valid sequence length (with padding): $effective_min to $effective_max bp"
   done
   echo ""
   total_seqs=$(grep -c "^>" "$input_fna")
@@ -1226,7 +1268,7 @@ verbose_echo "Generating about_extraction.txt summary file..."
     filtered_all=$(( total_seqs - passed_seqs ))
     perc_passed=$(awk "BEGIN {printf \"%.2f\", ($passed_seqs/$total_seqs*100)}")
     perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_all/$total_seqs*100)}")
-    echo "Sequences passed for all regions: $passed_seqs ($perc_passed% passed, $perc_filtered% filtered)"
+    echo "All regions: $passed_seqs passed, $filtered_all filtered ($perc_passed% passed, $perc_filtered% filtered)"
   fi
   echo ""
   echo "Sequence Length Statistics:"
@@ -1265,6 +1307,8 @@ verbose_echo "Generating about_extraction.txt summary file..."
     echo -n "Region $region lengths: "
     calc_length_stats "$output_dir/${region}_seqs.fasta"
   done
+  echo -n "Failed sequence lengths: "
+  calc_length_stats "$output_dir/failed_FULL_seqs.fasta"
   echo ""
   echo "Processing completed on: $(date)"
 } > "$output_dir/about_extraction.txt"
