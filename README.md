@@ -48,7 +48,7 @@ extract16s/
     ├── FULL_seqs.fasta           # Filtered full-length sequences
     ├── V3_seqs.fasta             # Extracted V3 region sequences
     ├── V3-V4_seqs.fasta          # Extracted V3-V4 region sequences
-    └── about.txt                 # Summary of processing details
+    └── about_extraction.txt                 # Summary of processing details
 ```
 
 ## Usage
@@ -133,7 +133,7 @@ The tool generates several output files in the `Output/` directory:
 
 - `FULL_seqs.fasta`: Full-length sequences that passed filters
 - `{REGION}_seqs.fasta`: Extracted sequences for each region (e.g., V3_seqs.fasta, V3-V4_seqs.fasta)
-- `about.txt`: Summary of processing details, including:
+- `about_extraction.txt`: Summary of processing details, including:
   - Input parameters
   - Reference sequence IDs
   - Region extraction parameters

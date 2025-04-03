@@ -20,7 +20,7 @@
 # Output: Directory with results:
 #     - FULL_seqs.fasta: Full length sequences
 #     - [NAME]_seqs.fasta: Extracted sequences
-#     - about.txt: Summary of processing details
+#     - about_extraction.txt: Summary of processing details
 
 
 # After running the script you should move the Output directory to somewhere like:
@@ -78,7 +78,7 @@
 #  └── Output/
 #      ├── FULL_seqs.fasta                # Full length sequences (same as input FASTA file, but filtered)
 #      ├── {REGION_NAME}_seqs.fasta       # Extracted sequences for each region
-#      └── about.txt                      # Summary of processing details
+#      └── about_extraction.txt                      # Summary of processing details
 
 
 # More example usage:
@@ -132,7 +132,7 @@
 #     ./Output/V3-V4_seqs.fasta
 #     ./Output/V6_seqs.fasta
 #     ./Output/V1-V3_seqs.fasta
-#     ./Output/about.txt  
+#     ./Output/about_extraction.txt  
 
 
 # Example input .fna file (sequences shortened for brevity):
@@ -563,19 +563,17 @@ get_alignment_range() {
   local char
   local aln_seq_len=${#aln_seq}
 
-
-
   for (( i=0; i<aln_seq_len; i++ )); do
     char="${aln_seq:$i:1}"
 
     # If char is uppercase nucleotide or gap
-    if [[ "$char" =~ [ATCG-] ]]; then
+    if [[ "$char" =~ [A-Z-] ]]; then
       # Count alignment position
       (( pos++ ))
     fi
 
-    # If char is a uppercase nucleotide or a lowercase nucleotide
-    if [[ "$char" =~ [ATCGatcg] ]]; then
+    # If char is any nucleotide (uppercase or lowercase)
+    if [[ "$char" =~ [A-Za-z] ]]; then
       # Count nucleotide
       (( nuc_count++ ))
       # If we have reached the start index, record the alignment index
@@ -669,6 +667,9 @@ for region in "${!region_specs[@]}"; do
   # (use helper function get_alignment_range)
   read arc_aln_start arc_aln_end < <(get_alignment_range "$ref_arc_seq" "$arc_start" "$arc_end")
   echo "  Archaeal alignment indices: $arc_aln_start to $arc_aln_end"
+
+
+
 
 
 
@@ -858,7 +859,6 @@ done
 
 
 
-
 # ===================================================================================================
 # Completed extraction for all regions
 # ===================================================================================================
@@ -872,16 +872,12 @@ echo ""
 
 
 
-
-
 # ===================================================================================================
 # Create output directory
 # ===================================================================================================
 output_dir="./Output"
 mkdir -p "$output_dir"
 echo "Created output directory: $output_dir"
-
-
 
 
 
@@ -1147,13 +1143,13 @@ fi
 # ===================================================================================================
 # Generate about file
 # ===================================================================================================
-# Writes a summary file to ./Output/about.txt
+# Writes a summary file to ./Output/about_extraction.txt
 # Contains:
 #  - Input parameters and options used
 #  - Reference sequence IDs and region parameters
 #  - Sequence counts and filtering statistics
 #  - Processing details and completion time
-echo "Generating about.txt summary file..."
+echo "Generating about_extraction.txt summary file..."
 {
   echo "16S rRNA Region Extraction Summary"
   echo "=================================="
@@ -1198,42 +1194,71 @@ echo "Generating about.txt summary file..."
     echo "  Region: $region"
     echo "    Bacteria positions: $bac_start to $bac_end"
     echo "    Archaea positions: $arc_start to $arc_end"
-    echo "    Expected sequence length: $effective_min to $effective_max bp"
-    if [ "$no_filter_ambiguous" = true ]; then
-      echo "    Ambiguous base filter: Not applied"
-    else
-      echo "    Ambiguous base filter: Applied (0% ambiguous bases allowed)"
-    fi
+    echo "    Valid sequence lengths (without any padding): $min_len to $max_len bp"
+    echo "    Expected sequence length (with padding): $effective_min to $effective_max bp"
   done
   echo ""
   total_seqs=$(grep -c "^>" "$input_fna")
   echo "Total sequences in input FASTA: $total_seqs"
-  if [ "$no_require_all_regions" = true ]; then
-    passed_seqs=$(grep -c "^>" "$full_filtered")
-  else
-    passed_seqs=$(grep -c "^>" "$output_dir/FULL_seqs.fasta")
-  fi
-  percentage=$(awk "BEGIN {printf \"%.2f\", ($passed_seqs/$total_seqs*100)}")
-  echo "Sequences passed all filters: $passed_seqs ($percentage%)"
-  echo ""
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
-    if [ "$no_require_all_regions" = true ]; then
-      region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
-    else
-      region_file="$output_dir/${region}_seqs.fasta"
-    fi
+    region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     region_passed=$(grep -c "^>" "$region_file")
     filtered_out=$(( total_seqs - region_passed ))
+    perc_passed=$(awk "BEGIN {printf \"%.2f\", ($region_passed/$total_seqs*100)}")
     perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_out/$total_seqs*100)}")
-    echo "Region $region: $region_passed passed, $filtered_out filtered out ($perc_filtered% filtered)"
+    echo "Region $region: $region_passed passed, $filtered_out filtered out ($perc_passed% passed, $perc_filtered% filtered)"
+  done
+  if [ "$no_require_all_regions" = false ]; then
+    passed_seqs=$(grep -c "^>" "$output_dir/FULL_seqs.fasta")
+    filtered_all=$(( total_seqs - passed_seqs ))
+    perc_passed=$(awk "BEGIN {printf \"%.2f\", ($passed_seqs/$total_seqs*100)}")
+    perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_all/$total_seqs*100)}")
+    echo "Sequences passed for all regions: $passed_seqs ($perc_passed% passed, $perc_filtered% filtered)"
+  fi
+  echo ""
+  echo "Sequence Length Statistics:"
+  calc_length_stats() {
+    local fasta_file=$1
+    awk 'BEGIN {RS=">"; ORS=""} 
+    NR>1 {
+      seq=""
+      for(i=2; i<=NF; i++) seq = seq $i
+      print length(seq) "\n"
+    }' "$fasta_file" | sort -n > "${intermediates_dir}/temp_lengths.txt"
+    local count=$(wc -l < "${intermediates_dir}/temp_lengths.txt")
+    if [ "$count" -gt 0 ]; then
+      local min=$(head -n 1 "${intermediates_dir}/temp_lengths.txt")
+      local max=$(tail -n 1 "${intermediates_dir}/temp_lengths.txt")
+      local median_pos=$(( (count + 1) / 2 ))
+      local median=$(sed -n "${median_pos}p" "${intermediates_dir}/temp_lengths.txt")
+      local p5_pos=$(echo "($count * 0.05) + 0.5" | bc | awk '{printf "%d", $0}')
+      [ $p5_pos -lt 1 ] && p5_pos=1
+      local p5=$(sed -n "${p5_pos}p" "${intermediates_dir}/temp_lengths.txt")
+      local p95_pos=$(echo "($count * 0.95) + 0.5" | bc | awk '{printf "%d", $0}')
+      [ $p95_pos -gt $count ] && p95_pos=$count
+      local p95=$(sed -n "${p95_pos}p" "${intermediates_dir}/temp_lengths.txt")
+      echo "  Min:$min, 5%:$p5, Median:$median, 95%:$p95, Max:$max"
+    else
+      echo "  No sequences found"
+    fi
+    rm "${intermediates_dir}/temp_lengths.txt"
+  }
+  echo -n "Full sequence lengths: "
+  calc_length_stats "$output_dir/FULL_seqs.fasta"
+  for region in "${!region_specs[@]}"; do
+    if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+      continue
+    fi
+    echo -n "Region $region lengths: "
+    calc_length_stats "$output_dir/${region}_seqs.fasta"
   done
   echo ""
   echo "Processing completed on: $(date)"
-} > "$output_dir/about.txt"
-echo "about.txt written to: $output_dir/about.txt"
+} > "$output_dir/about_extraction.txt"
+echo "about_extraction.txt written to: $output_dir/about_extraction.txt"
 
 
 
