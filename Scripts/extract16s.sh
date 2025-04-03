@@ -25,7 +25,7 @@
 
 # After running the script you should move the Output directory to somewhere like:
 # D:/16S_databases/micro16S_databases/Output/
-# (Obviousy rename the Output directory to something more meaningful like "m16s_db_007")
+# (Obviously rename the Output directory to something more meaningful like "m16s_db_007")
 
 
 # Dependencies:
@@ -44,6 +44,7 @@
 #   --trunc_padding N         Add N bases of padding to each side of extracted regions (default: 0)
 #                            For example, with --trunc_padding 10 and a region specified as
 #                            positions 500-700, the actual extraction would be from 490-710
+#   --verbose                 Print verbose output
 #
 # Example Usage:
 #   bash extract16s.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v3_v3-v4.truncspec
@@ -185,6 +186,19 @@
 
 
 
+
+# ===================================================================================================
+# Define verbose echo function
+# ===================================================================================================
+verbose_echo() {
+  if [ "$verbose" = true ]; then
+    echo "$1"
+  fi
+}
+
+
+
+
 # ===================================================================================================
 # Check for required dependencies
 # ===================================================================================================
@@ -234,9 +248,7 @@ check_dependencies() {
 }
 
 # Run dependency check
-echo ""
-echo "------------------------------------------"
-echo "Checking for required dependencies..."
+verbose_echo "Checking for required dependencies..."
 check_dependencies "$@"
 
 
@@ -245,9 +257,8 @@ check_dependencies "$@"
 # ===================================================================================================
 # Begin Script
 # ===================================================================================================
-echo ""
-echo "------------------------------------------"
 echo "Starting extract16s..."
+verbose_echo "Using the following parameters..."
 # Start timing the execution
 start_time=$(date +%s)
 
@@ -269,6 +280,7 @@ no_filter_ambiguous=false
 no_require_all_regions=false
 rm_intermediates=false
 trunc_padding=0
+verbose=false
 
 i=5  # Start after the four required positional arguments
 while [ $i -le $# ]; do
@@ -277,19 +289,19 @@ while [ $i -le $# ]; do
   case "$arg" in
     "--skip_align")
       skip_align=true
-      echo "Skipping alignment process as --skip_align flag is set."
+      verbose_echo "Skipping alignment process as --skip_align flag is set."
       ;;
     "--no_filter_ambiguous")
       no_filter_ambiguous=true
-      echo "Skipping ambiguous base content filtering as --no_filter_ambiguous flag is set."
+      verbose_echo "Skipping ambiguous base content filtering as --no_filter_ambiguous flag is set."
       ;;
     "--no_require_all_regions")
       no_require_all_regions=true
-      echo "Skipping requirement for sequences to be present in all regions as --no_require_all_regions flag is set."
+      verbose_echo "Skipping requirement for sequences to be present in all regions as --no_require_all_regions flag is set."
       ;;
     "--rm_intermediates")
       rm_intermediates=true
-      echo "Will remove intermediate files after processing as --rm_intermediates flag is set."
+      verbose_echo "Will remove intermediate files after processing as --rm_intermediates flag is set."
       ;;
     "--trunc_padding")
       # Get the next argument as the padding value
@@ -301,21 +313,24 @@ while [ $i -le $# ]; do
           echo "Error: trunc_padding must be a non-negative integer"
           exit 1
         fi
-        echo "Using truncation padding of $trunc_padding bases"
+        verbose_echo "Using truncation padding of $trunc_padding bases"
       else
         echo "Error: --trunc_padding requires a value"
         exit 1
       fi
       ;;
+    "--verbose")
+      verbose=true
+      ;;
   esac
   i=$((i+1))
 done 
 
-echo "Input parameters:"
-echo "  Input FASTA: $input_fna"
-echo "  Bacteria HMM: $bac_hmm"
-echo "  Archaea HMM: $arc_hmm"
-echo "  Truncation specification file: $trunc_spec_file"
+verbose_echo "Input parameters:"
+verbose_echo "  Input FASTA: $input_fna"
+verbose_echo "  Bacteria HMM: $bac_hmm"
+verbose_echo "  Archaea HMM: $arc_hmm"
+verbose_echo "  Truncation specification file: $trunc_spec_file"
 
 
 # Validate input files ---------------------------
@@ -341,7 +356,7 @@ fi
 
 
 # Parse the truncation specification file --------------------------- 
-echo "Truncation specifications:"
+verbose_echo "Truncation specifications:"
 declare -A region_specs
 while IFS= read -r line || [[ -n "$line" ]]; do
   # Skip comments and blank lines
@@ -352,10 +367,10 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   
   if [[ "$line" =~ ^ARC_REF_SEQ_ID ]]; then
     arc_ref=$(echo "$line" | cut -d':' -f2 | xargs)
-    echo "  Found Archaea ref sequence ID: $arc_ref"
+    verbose_echo "  Found Archaea ref sequence ID: $arc_ref"
   elif [[ "$line" =~ ^BAC_REF_SEQ_ID ]]; then
     bac_ref=$(echo "$line" | cut -d':' -f2 | xargs)
-    echo "  Found Bacteria ref sequence ID: $bac_ref"
+    verbose_echo "  Found Bacteria ref sequence ID: $bac_ref"
   elif [[ "$line" =~ : ]]; then
     # More robust parsing of region name and parameters
     region=$(echo "$line" | cut -d':' -f1 | tr -d ' ')
@@ -387,7 +402,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     fi
     
     region_specs["$region"]="$params"
-    echo "  Found '$region': $params"
+    verbose_echo "  Found '$region': $params"
   fi
 done < "$trunc_spec_file"
 
@@ -412,7 +427,8 @@ fi
 # ===================================================================================================
 intermediates_dir="./Intermediates"
 mkdir -p "$intermediates_dir"
-echo "Created intermediates directory: $intermediates_dir"
+verbose_echo ""
+verbose_echo "Created intermediates directory: $intermediates_dir"
 
 
 
@@ -428,7 +444,8 @@ if [ "$skip_align" = false ]; then
   bac_fna="${intermediates_dir}/00_full_seqs_bac.fna"
   arc_fna="${intermediates_dir}/00_full_seqs_arc.fna"
 
-  echo "Splitting sequences into Bacteria and Archaea based on FASTA headers..."
+  verbose_echo ""
+  verbose_echo "Splitting sequences into Bacteria and Archaea based on FASTA headers..."
   # Split sequences into Bacteria and Archaea by examining the headers
   # "d__Bacteria" vs "d__Archaea" in the FASTA header lines
   awk 'BEGIN {split_type=""; bac_count=0; arc_count=0}
@@ -454,6 +471,7 @@ if [ "$skip_align" = false ]; then
   END {
     print "Found " bac_count " bacterial sequences and " arc_count " archaeal sequences"
   }' "$input_fna"
+  verbose_echo ""
 
   
   # Align Bacteria ---------------------------
@@ -527,13 +545,12 @@ fi
 # Beginning truncation & extraction process
 # ===================================================================================================
 # Here we loop through each region originating from the truncation specification file:
-#   1. Identify the reference sequence and extract that region specified by start and end positions for all sequences for bacteria and archaea seperately.
+#   1. Identify the reference sequence and extract that region specified by start and end positions for all sequences for bacteria and archaea separately.
 #   2. Merge all the truncated sequences together with the same header and the same order as seen in the original input FASTA file, and write it to file.
 #        e.g.   ./InputData/ssu_all_r220_filtered.fna  ->  ./Output/ssu_all_r220_filtered_16s_v3.fna
 # This is done for every region (e.g. V3, V3-V4, V6, V1-V3, etc.)
-echo ""
-echo "------------------------------------------"
-echo "Beginning extraction of 16S regions using alignments..."
+verbose_echo ""
+verbose_echo "Beginning extraction of 16S regions using alignments..."
 
 
 
@@ -545,10 +562,9 @@ echo "Beginning extraction of 16S regions using alignments..."
 # Define a helper function to compute the alignment range.
 
 # In the .truncspec file, there are start and end indices which are nucleotide positions in the original reference sequence.
-# This function esstentially gets the respective alignment indices for the given nucleotide positions.
-
+# This function essentially gets the respective alignment indices for the given nucleotide positions.
 # This function scans the reference sequence (from the A2M file):
-#   - Keeps track of alignment index (only uppercase (A–Z) or the gap symbol (“-”))
+#   - Keeps track of alignment index (only uppercase (A–Z) or the gap symbol ("-"))
 #   - Keeps track of the nucleotide index (only uppercase (A–Z) or the lowercase (a–z))
 #   - When the nucleotide index equals the requested start or end (from the .truncspec), it records the alignment index.
 
@@ -605,9 +621,8 @@ for region in "${!region_specs[@]}"; do
   if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
     continue
   fi
-  echo ""
-  echo "------------------------------------------"
-  echo "Processing region: $region"
+  verbose_echo ""
+  verbose_echo "Processing region: $region"
 
 
 
@@ -622,9 +637,9 @@ for region in "${!region_specs[@]}"; do
   bac_end=$(echo "${region_specs[$region]}" | grep -oE 'bac_end=[0-9]+' | cut -d'=' -f2)
   min_len=$(echo "${region_specs[$region]}" | grep -oE 'min_len=[0-9]+' | cut -d'=' -f2)
   max_len=$(echo "${region_specs[$region]}" | grep -oE 'max_len=[0-9]+' | cut -d'=' -f2)
-  echo "  Bacteria region positions: $bac_start to $bac_end"
-  echo "  Archaea region positions: $arc_start to $arc_end"
-  echo "  Valid sequence length range: $min_len to $max_len bp"
+  verbose_echo "  Bacteria region positions: $bac_start to $bac_end"
+  verbose_echo "  Archaea region positions: $arc_start to $arc_end"
+  verbose_echo "  Valid sequence length range: $min_len to $max_len bp"
 
 
 
@@ -637,7 +652,7 @@ for region in "${!region_specs[@]}"; do
   # Find the bacterial reference record (its header should contain the $bac_ref substring)
   ref_bac_record=$(awk -v ref="$bac_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/01_align_bac_ssu.a2m")
   if [ -z "$ref_bac_record" ]; then
-    echo "Error: Bacterial reference sequence not found in 01_align_bac_ssu.a2m"
+    echo "  Error: Bacterial reference sequence not found in 01_align_bac_ssu.a2m"
     exit 1
   fi
   # Remove the header and newlines to get one continuous sequence string
@@ -645,7 +660,7 @@ for region in "${!region_specs[@]}"; do
   # Compute the alignment index range for this region based on the Bacterial reference sequence's aligned sequence
   # (use helper function get_alignment_range)
   read bac_aln_start bac_aln_end < <(get_alignment_range "$ref_bac_seq" "$bac_start" "$bac_end")
-  echo "  Bacterial alignment indices: $bac_aln_start to $bac_aln_end"
+  verbose_echo "  Bacterial alignment indices: $bac_aln_start to $bac_aln_end"
 
 
 
@@ -658,7 +673,7 @@ for region in "${!region_specs[@]}"; do
   # Find the archaeal reference record (its header should contain the $arc_ref substring)
   ref_arc_record=$(awk -v ref="$arc_ref" 'BEGIN{RS=">"; ORS=""} $0 ~ ref {print ">"$0; exit}' "${intermediates_dir}/01_align_arc_ssu.a2m")
   if [ -z "$ref_arc_record" ]; then
-    echo "Error: Archaeal reference sequence not found in 01_align_arc_ssu.a2m"
+    echo "  Error: Archaeal reference sequence not found in 01_align_arc_ssu.a2m"
     exit 1
   fi
   # Remove the header and newlines to get one continuous sequence string
@@ -666,7 +681,7 @@ for region in "${!region_specs[@]}"; do
   # Compute the alignment index range for this region based on the Archaeal reference sequence's aligned sequence
   # (use helper function get_alignment_range)
   read arc_aln_start arc_aln_end < <(get_alignment_range "$ref_arc_seq" "$arc_start" "$arc_end")
-  echo "  Archaeal alignment indices: $arc_aln_start to $arc_aln_end"
+  verbose_echo "  Archaeal alignment indices: $arc_aln_start to $arc_aln_end"
 
 
 
@@ -686,7 +701,7 @@ for region in "${!region_specs[@]}"; do
   
   # Extract truncated sequences to Intermediates/02_truncated_bac_${region}.fna
   truncated_bac_file="${intermediates_dir}/02_truncated_bac_${region}.fna"
-  echo " Extracting truncated bacterial regions to: $truncated_bac_file"
+  verbose_echo "  Extracting truncated bacterial regions to: $truncated_bac_file"
 
   awk -v start="$bac_aln_start" -v end="$bac_aln_end" '
   BEGIN {
@@ -748,7 +763,7 @@ for region in "${!region_specs[@]}"; do
   
   # Extract truncated sequences to Intermediates/02_truncated_arc_${region}.fna
   truncated_arc_file="${intermediates_dir}/02_truncated_arc_${region}.fna"
-  echo " Extracting truncated archaeal regions to: $truncated_arc_file"
+  verbose_echo "  Extracting truncated archaeal regions to: $truncated_arc_file"
 
   awk -v start="$arc_aln_start" -v end="$arc_aln_end" '
   BEGIN {
@@ -853,7 +868,7 @@ for region in "${!region_specs[@]}"; do
     }
   ' "$joined_truncated_file" "$input_fna" > "$merged_output"
 
-  echo "  Region '$region' extraction complete. Output written to: $merged_output"
+  verbose_echo "  Region '$region' extraction complete. Output written to: $merged_output"
 done
 
 
@@ -863,9 +878,8 @@ done
 # Completed extraction for all regions
 # ===================================================================================================
 # Now for each region we have a file with the truncated sequences of that region in the order of the original input FASTA file
-echo "Completed extraction for all regions."
-echo "------------------------------------------"
-echo ""
+verbose_echo "Completed extraction for all regions."
+verbose_echo ""
 
 
 
@@ -877,7 +891,8 @@ echo ""
 # ===================================================================================================
 output_dir="./Output"
 mkdir -p "$output_dir"
-echo "Created output directory: $output_dir"
+verbose_echo "Created output directory: $output_dir"
+verbose_echo ""
 
 
 
@@ -892,9 +907,7 @@ for region in "${!region_specs[@]}"; do
   if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
     continue
   fi
-  echo ""
-  echo "------------------------------------------"
-  echo "Filtering truncated sequences for region: $region"
+  verbose_echo "Filtering truncated sequences for region: $region"
 
 
 
@@ -953,7 +966,7 @@ for region in "${!region_specs[@]}"; do
       }
     }' "$input_file" > "$output_file"
   fi
-  echo "  Filtered truncated sequences written to: $output_file"
+  verbose_echo "  Filtered truncated sequences written to: $output_file"
 done
 
 
@@ -969,9 +982,7 @@ done
 #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
 # The filtered sequences are written to ./Intermediates/06_filtered_full_seqs.fna
 
-echo ""
-echo "------------------------------------------"
-echo "Filtering full sequences from input FASTA..."
+verbose_echo "Filtering full sequences from input FASTA..."
 
 # Output file
 full_filtered="${intermediates_dir}/06_filtered_full_seqs.fna"
@@ -1000,7 +1011,7 @@ else
     }
   }' "$input_fna" > "$full_filtered"
 fi
-echo "  Filtered full sequences written to: $full_filtered"
+verbose_echo "  Filtered full sequences written to: $full_filtered"
 
 
 
@@ -1034,12 +1045,11 @@ echo "  Filtered full sequences written to: $full_filtered"
 # If we do not require all regions -----------------------------
 if [ "$no_require_all_regions" = true ]; then
 
-  echo ""
-  echo "------------------------------------------"
-  echo "Outputting sequences to Output directory..."
+  verbose_echo ""
+  verbose_echo "Outputting sequences to Output directory..."
   # Copy the filtered full sequences to the Output directory
   cp "$full_filtered" "$output_dir/FULL_seqs.fasta"
-  echo "  Copied filtered full sequences to: $output_dir/FULL_seqs.fasta"
+  verbose_echo "  Copied filtered full sequences to: $output_dir/FULL_seqs.fasta"
 
   # Copy the filtered truncated sequences for each region to the Output directory
   for region in "${!region_specs[@]}"; do
@@ -1048,7 +1058,7 @@ if [ "$no_require_all_regions" = true ]; then
     fi
     region_filtered="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     cp "$region_filtered" "$output_dir/${region}_seqs.fasta"
-    echo "  Copied filtered truncated sequences for region $region to: $output_dir/${region}_seqs.fasta"
+    verbose_echo "  Copied filtered truncated sequences for region $region to: $output_dir/${region}_seqs.fasta"
   done
 
 
@@ -1058,9 +1068,8 @@ else
   # Filter all the sequences to ensure they are present in all regions and write them in ./Output/
 
   # Copy the filtered full sequences to the Output directory
-  echo ""
-  echo "------------------------------------------"
-  echo "Performing cross-region filtering to retain only sequences present in all filtered files..."
+  verbose_echo ""
+  verbose_echo "Performing cross-region filtering to retain only sequences present in all filtered files..."
 
 
   # Start by extracting headers from the filtered full sequences file
@@ -1085,7 +1094,7 @@ else
     mv "$intersect" "$temp_common"
     rm "$temp_headers"
   done
-  echo "  Common headers count: $(wc -l < "$temp_common")"
+  verbose_echo "  Common headers count: $(wc -l < "$temp_common")"
   
   # Define a helper function to filter a FASTA file by common headers
   # This function takes an input FASTA file and outputs only sequences
@@ -1118,7 +1127,7 @@ else
   # Apply the filtering to each file
   # First, filter the full sequences
   filter_by_common_headers "$full_filtered" "$output_dir/FULL_seqs.fasta"
-  echo "  Full sequences after cross-region filtering written to: $output_dir/FULL_seqs.fasta"
+  verbose_echo "  Full sequences after cross-region filtering written to: $output_dir/FULL_seqs.fasta"
   
   # Then for each region, filter its sequences
   for region in "${!region_specs[@]}"; do
@@ -1128,7 +1137,7 @@ else
     region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     output_region="$output_dir/${region}_seqs.fasta"
     filter_by_common_headers "$region_file" "$output_region"
-    echo "  Filtered truncated sequences for region $region written to: $output_region"
+    verbose_echo "  Filtered truncated sequences for region $region written to: $output_region"
   done
   
   # Clean up temporary common headers file
@@ -1149,7 +1158,8 @@ fi
 #  - Reference sequence IDs and region parameters
 #  - Sequence counts and filtering statistics
 #  - Processing details and completion time
-echo "Generating about_extraction.txt summary file..."
+verbose_echo ""
+verbose_echo "Generating about_extraction.txt summary file..."
 {
   echo "16S rRNA Region Extraction Summary"
   echo "=================================="
@@ -1258,7 +1268,7 @@ echo "Generating about_extraction.txt summary file..."
   echo ""
   echo "Processing completed on: $(date)"
 } > "$output_dir/about_extraction.txt"
-echo "about_extraction.txt written to: $output_dir/about_extraction.txt"
+verbose_echo "about_extraction.txt written to: $output_dir/about_extraction.txt"
 
 
 
@@ -1266,14 +1276,16 @@ echo "about_extraction.txt written to: $output_dir/about_extraction.txt"
 # ===================================================================================================
 # Clean up intermediate files if requested
 # ===================================================================================================
+verbose_echo ""
 if [ "$rm_intermediates" = true ]; then
-  echo "Cleaning up intermediate files..."
+  verbose_echo "Cleaning up intermediate files..."
   rm -rf "${intermediates_dir}"
-  echo "Intermediate files removed."
+  verbose_echo "Intermediate files removed."
 else
-  echo "Intermediate files kept in: ${intermediates_dir}"
-  echo "Use --rm_intermediates flag to remove these files automatically."
+  verbose_echo "Intermediate files kept in: ${intermediates_dir}"
+  verbose_echo "Use --rm_intermediates flag to remove these files automatically."
 fi
+verbose_echo ""
 
 
 
