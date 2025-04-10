@@ -184,3 +184,7 @@ For questions, issues, or suggestions, please contact:
 
 ---
 Created by Haig Bishop, 2025
+
+### To Do
+ - Allow specification of output directory
+ 
