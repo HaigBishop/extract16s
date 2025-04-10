@@ -47,7 +47,7 @@
 #   --verbose                 Print verbose output
 #
 # Example Usage:
-#   bash extract16s.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v3_v3-v4.truncspec
+#   bash extract16s.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v4_v3-v4.truncspec
 
 
 # Directory structure example:
@@ -57,7 +57,7 @@
 #  │   ├── arc_16s.hmm                      # HMM database for rRNA models
 #  │   ├── bac_16s.hmm                      # HMM database for rRNA models
 #  │   ├── ssu_all_r220_filtered.fna        # FASTA file with sequences to analyze
-#  │   └── trunc_spec_v3_v3-v4.truncspec    # Truncation specification file
+#  │   └── trunc_spec_v4_v3-v4.truncspec    # Truncation specification file
 #  │
 #  ├── Scripts/
 #  │   └── extract16s.sh  # Main script
@@ -96,7 +96,7 @@
 #      ./InputData/ssu_all_r220_filtered.fna \
 #      ./InputData/bac_16s.hmm \
 #      ./InputData/arc_16s.hmm \
-#      ./InputData/trunc_spec_v3_v3-v4.truncspec \
+#      ./InputData/trunc_spec_v4_v3-v4.truncspec \
 #      --trunc_padding 15 --rm_intermediates #--skip_align 
 #                                                 ^---- OPTIONALLY SKIP ALIGNMENT PROCESS 
 #                                                 (if you already have the .a2m alignments)

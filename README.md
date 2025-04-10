@@ -37,7 +37,7 @@ extract16s/
 │   ├── arc_16s.hmm                # Archaeal 16S HMM file
 │   ├── bac_16s.hmm                # Bacterial 16S HMM file
 │   ├── ssu_all_r220_filtered.fna       # Input FASTA file
-│   └── trunc_spec_v3_v3-v4.truncspec  # Truncation specification file
+│   └── trunc_spec_v4_v3-v4.truncspec  # Truncation specification file
 │
 ├── Scripts/
 │   └── extract16s.sh              # Main script
@@ -88,7 +88,7 @@ bash ./Scripts/extract16s.sh \
      ./InputData/ssu_all_r220_filtered.fna \
      ./InputData/bac_16s.hmm \
      ./InputData/arc_16s.hmm \
-     ./InputData/trunc_spec_v3_v3-v4.truncspec \
+     ./InputData/trunc_spec_v4_v3-v4.truncspec \
      --trunc_padding 15 --verbose
 ```
 
