@@ -470,6 +470,16 @@ if [ -z "$bac_ref" ]; then
   echo "Error: Bacteria reference sequence ID not found in truncation specification file."
   exit 1
 fi
+# Check if reference IDs exist in input FASTA
+if ! grep -q "$arc_ref" "$input_fna"; then
+  echo "Error: Archaea reference sequence ID '$arc_ref' not found in input FASTA file."
+  exit 1
+fi
+
+if ! grep -q "$bac_ref" "$input_fna"; then
+  echo "Error: Bacteria reference sequence ID '$bac_ref' not found in input FASTA file."
+  exit 1
+fi
 
 
 
