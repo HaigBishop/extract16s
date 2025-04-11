@@ -912,12 +912,18 @@ for region in "${!region_specs[@]}"; do
     FNR == NR {
       if ($0 != "") {
         n = split($0, lines, "\n");
-        key = lines[1];  # Header (without the leading ">" because RS is ">" )
+        header = lines[1];  # Header (without the leading ">" because RS is ">" )
+        # Extract the accession ID (part before first space)
+        accession = header;
+        if (index(header, " ") > 0) {
+          accession = substr(header, 1, index(header, " ")-1);
+        }
         seq = "";
         for (i = 2; i <= n; i++) {
           seq = seq lines[i];
         }
-        truncated[key] = seq;  # Save the truncated sequence indexed by header
+        truncated[accession] = seq;  # Save the truncated sequence indexed by ACCESSION ID
+        header_map[accession] = header;  # Save the full header for output
         count++;
       }
       next;
@@ -927,8 +933,14 @@ for region in "${!region_specs[@]}"; do
       if ($0 != "") {
         n = split($0, lines, "\n");
         header = lines[1];  # This header should match one in truncated[]
-        if (header in truncated) {
-          print ">" header "\n" truncated[header] "\n";
+        # Extract the accession ID (part before first space)
+        accession = header;
+        if (index(header, " ") > 0) {
+          accession = substr(header, 1, index(header, " ")-1);
+        }
+        if (accession in truncated) {
+          # Use the original full header from the input file
+          print ">" header "\n" truncated[accession] "\n";
           match_count++;
         }
       }
@@ -1074,7 +1086,10 @@ else
       for(i=2; i<=n; i++){
         seq = seq lines[i]
       }
-      # Only print records with sequences of A, T, C, G only
+      # Remove potential problematic characters (like carriage returns) and convert to uppercase
+      gsub(/\r/, "", seq)
+      seq = toupper(seq)
+      # Only print records with sequences of A, T, C, G only (now case-insensitive)
       if(seq ~ /^[ATCG]+$/){
         print ">" header "\n" seq "\n"
       }
@@ -1142,12 +1157,12 @@ else
   verbose_echo "Performing cross-region filtering to retain only sequences present in all filtered files..."
 
 
-  # Start by extracting headers from the filtered full sequences file
+  # Start by extracting accession IDs from the filtered full sequences file
   temp_common="${intermediates_dir}/common_headers.txt"
-  grep '^>' "$full_filtered" | sed 's/^>//' > "$temp_common"
+  grep '^>' "$full_filtered" | sed 's/^>//' | awk '{print $1}' > "$temp_common"
   
-  # For each region, intersect its headers with the common header list
-  # This creates a progressively smaller list of headers that are present in ALL regions
+  # For each region, intersect its accession IDs with the common accession ID list
+  # This creates a progressively smaller list of accession IDs that are present in ALL regions
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
@@ -1155,10 +1170,10 @@ else
     region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
     temp_headers="${intermediates_dir}/headers_${region}.txt"
     
-    # Extract headers from the current region file
-    grep '^>' "$region_file" | sed 's/^>//' > "$temp_headers"
+    # Extract accession IDs from the current region file
+    grep '^>' "$region_file" | sed 's/^>//' | awk '{print $1}' > "$temp_headers"
     
-    # Intersect with running list of common headers
+    # Intersect with running list of common accession IDs
     intersect="${intermediates_dir}/common_tmp.txt"
     grep -Fxf "$temp_common" "$temp_headers" > "$intersect"
     mv "$intersect" "$temp_common"
@@ -1173,7 +1188,7 @@ else
     local infile="$1"
     local outfile="$2"
     awk -v common="$temp_common" -v add_indices="$add_indices" 'BEGIN{
-      # Read common headers into an array
+      # Read common accession IDs into an array
       while((getline line < common) > 0){
         headers[line]=1
       }
@@ -1184,7 +1199,12 @@ else
       if($0 != ""){
         n = split($0, lines, "\n")
         header = lines[1]
-        if(header in headers){
+        # Extract accession ID (part before first space)
+        accession = header
+        if (index(header, " ") > 0) {
+          accession = substr(header, 1, index(header, " ")-1)
+        }
+        if(accession in headers){
           seq = ""
           for(i=2; i<=n; i++){
             seq = seq lines[i]
@@ -1233,12 +1253,12 @@ fi
 verbose_echo "  Writing sequences that failed filtering..."
 failed_output="$out_dir/failed_FULL_seqs.fasta"
 
-# Extract headers from the filtered FASTA file into a temporary file
-grep "^>" "$out_dir/FULL_seqs.fasta" | sed 's/^>//' > "${intermediates_dir}/passed_headers.txt"
+# Extract accession IDs from the filtered FASTA file into a temporary file
+grep "^>" "$out_dir/FULL_seqs.fasta" | sed 's/^>//' | awk '{print $1}' > "${intermediates_dir}/passed_headers.txt"
 
 # Compare input against filtered and write sequences not in filtered to failed output
 awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
-  # Load passed headers into array
+  # Load passed accession IDs into array
   while ((getline line < passed) > 0) {
     headers[line] = 1
   }
@@ -1248,8 +1268,13 @@ awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
   if ($0 != "") {
     n = split($0, lines, "\n")
     header = lines[1]
-    # If header NOT in the passed headers, write to failed output
-    if (!(header in headers)) {
+    # Extract accession ID (part before first space)
+    accession = header
+    if (index(header, " ") > 0) {
+      accession = substr(header, 1, index(header, " ")-1)
+    }
+    # If accession NOT in the passed headers, write to failed output
+    if (!(accession in headers)) {
       seq = ""
       for (i=2; i<=n; i++) {
         seq = seq lines[i]
