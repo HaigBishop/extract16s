@@ -196,7 +196,3 @@ For questions, issues, or suggestions, please contact:
 
 ---
 Created by Haig Bishop, 2025
-
-### To Do
- - Allow specification of output directory
- - Provide option to include sequence indices in the header (e.g. ">{1345}seq_1_1234567890")
