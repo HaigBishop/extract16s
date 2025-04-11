@@ -5,6 +5,7 @@
 #  - Uses HMMs to extract regions.
 #  - Unless --no_filter_ambiguous flag is given, filter sequences by ambiguous base content (non-ATCG bases)
 #  - Unless --no_require_all_regions flag is given, only keep sequences successfully extracted for all regions
+#  - If --add_indices flag is given (and --no_require_all_regions is NOT), prepend unique indices (e.g., {1}, {2}) to output FASTA headers.
 #  - If using with Micro16S, the <input_fna> given to this script should the output of the filter_database.py script.
 #  - If --skip_align flag is given, skips the alignment process and uses pre-existing alignments. 
 #       (Assuming they exist at: ./Intermediates/01_align_arc_ssu.a2m and ./Intermediates/01_align_bac_ssu.a2m)
@@ -44,10 +45,19 @@
 #   --trunc_padding N         Add N bases of padding to each side of extracted regions (default: 0)
 #                            For example, with --trunc_padding 10 and a region specified as
 #                            positions 500-700, the actual extraction would be from 490-710
+#   --out_dir PATH            Specify the output directory (default: ./Output)
 #   --verbose                 Print verbose output
+#   --add_indices             Prepend unique indices ({1}, {2}, ...) to output FASTA headers (ignored if --no_require_all_regions is used).
 #
 # Example Usage:
-#   bash extract16s.sh ./InputData/ssu_all_r220_filtered.fna ./InputData/bac_16s.hmm ./InputData/arc_16s.hmm ./InputData/trunc_spec_v4_v3-v4.truncspec
+#   bash ./Scripts/extract16s.sh \
+#      ./InputData/ssu_all_r220_filtered.fna \
+#      ./InputData/bac_16s.hmm \
+#      ./InputData/arc_16s.hmm \
+#      ./InputData/trunc_spec_v4_v3-v4.truncspec \
+#      --trunc_padding 15 --rm_intermediates #--skip_align 
+#                                                 ^---- OPTIONALLY SKIP ALIGNMENT PROCESS 
+#                                                 (if you already have the .a2m alignments)
 
 
 # Directory structure example:
@@ -111,7 +121,7 @@
 # 5. For each region, write the extracted 16S regions to a new fasta file 
 #      (bacteria and archaea merged and in original order with exact same FASTA headers as the input file)
 #      e.g. ./Intermediates/ssu_all_r220_filtered_16s_v3.fna
-# 6. Filter the sequences and write to ./Output/
+# 6. Filter the sequences and write to the output directory (default: ./Output/)
 #      - Filtering by length and ambiguous base content. Then filter for sequences present in all Regions
 
 
@@ -282,6 +292,8 @@ no_require_all_regions=false
 rm_intermediates=false
 trunc_padding=0
 verbose=false
+out_dir="./Output"
+add_indices=false
 
 i=5  # Start after the four required positional arguments
 while [ $i -le $# ]; do
@@ -320,18 +332,40 @@ while [ $i -le $# ]; do
         exit 1
       fi
       ;;
+    "--out_dir")
+      # Get the next argument as the output directory path
+      i=$((i+1))
+      if [ $i -le $# ]; then
+        out_dir="${!i}"
+        verbose_echo "Using output directory: $out_dir"
+      else
+        echo "Error: --out_dir requires a value"
+        exit 1
+      fi
+      ;;
     "--verbose")
       verbose=true
+      ;;
+    "--add_indices")
+      add_indices=true
+      verbose_echo "Adding unique indices to output FASTA headers as --add_indices flag is set."
       ;;
   esac
   i=$((i+1))
 done 
+
+# Check for conflicting options
+if [ "$add_indices" = true ] && [ "$no_require_all_regions" = true ]; then
+  echo "Warning: --add_indices cannot be used with --no_require_all_regions. Indices will not be added." >&2
+  add_indices=false # Prevent adding indices later
+fi
 
 verbose_echo "Input parameters:"
 verbose_echo "  Input FASTA: $input_fna"
 verbose_echo "  Bacteria HMM: $bac_hmm"
 verbose_echo "  Archaea HMM: $arc_hmm"
 verbose_echo "  Truncation specification file: $trunc_spec_file"
+verbose_echo "  Output Directory: $out_dir"
 
 
 # Validate input files ---------------------------
@@ -548,7 +582,7 @@ fi
 # Here we loop through each region originating from the truncation specification file:
 #   1. Identify the reference sequence and extract that region specified by start and end positions for all sequences for bacteria and archaea separately.
 #   2. Merge all the truncated sequences together with the same header and the same order as seen in the original input FASTA file, and write it to file.
-#        e.g.   ./InputData/ssu_all_r220_filtered.fna  ->  ./Output/ssu_all_r220_filtered_16s_v3.fna
+#        e.g.   ./InputData/ssu_all_r220_filtered.fna  ->  ./Intermediates/ssu_all_r220_filtered_16s_v3.fna
 # This is done for every region (e.g. V3, V3-V4, V6, V1-V3, etc.)
 verbose_echo ""
 verbose_echo "Beginning extraction of 16S regions using alignments..."
@@ -888,11 +922,14 @@ verbose_echo ""
 
 
 # ===================================================================================================
-# Create output directory
+# Create and validate output directory
 # ===================================================================================================
-output_dir="./Output"
-mkdir -p "$output_dir"
-verbose_echo "Created output directory: $output_dir"
+if [ -e "$out_dir" ] && [ ! -d "$out_dir" ]; then
+  echo "Error: Output path '$out_dir' exists but is not a directory."
+  exit 1
+fi
+mkdir -p "$out_dir"
+verbose_echo "Ensured output directory exists: $out_dir"
 verbose_echo ""
 
 
@@ -1049,8 +1086,8 @@ if [ "$no_require_all_regions" = true ]; then
   verbose_echo ""
   verbose_echo "Outputting sequences to Output directory..."
   # Copy the filtered full sequences to the Output directory
-  cp "$full_filtered" "$output_dir/FULL_seqs.fasta"
-  verbose_echo "  Copied filtered full sequences to: $output_dir/FULL_seqs.fasta"
+  cp "$full_filtered" "$out_dir/FULL_seqs.fasta"
+  verbose_echo "  Copied filtered full sequences to: $out_dir/FULL_seqs.fasta"
 
   # Copy the filtered truncated sequences for each region to the Output directory
   for region in "${!region_specs[@]}"; do
@@ -1058,15 +1095,15 @@ if [ "$no_require_all_regions" = true ]; then
       continue
     fi
     region_filtered="${intermediates_dir}/05_filtered_truncated_${region}.fna"
-    cp "$region_filtered" "$output_dir/${region}_seqs.fasta"
-    verbose_echo "  Copied filtered truncated sequences for region $region to: $output_dir/${region}_seqs.fasta"
+    cp "$region_filtered" "$out_dir/${region}_seqs.fasta"
+    verbose_echo "  Copied filtered truncated sequences for region $region to: $out_dir/${region}_seqs.fasta"
   done
 
 
 
 # If we do require all regions -----------------------------
 else
-  # Filter all the sequences to ensure they are present in all regions and write them in ./Output/
+  # Filter all the sequences to ensure they are present in all regions and write them in $out_dir/
 
   # Copy the filtered full sequences to the Output directory
   verbose_echo ""
@@ -1103,12 +1140,13 @@ else
   filter_by_common_headers() {
     local infile="$1"
     local outfile="$2"
-    awk -v common="$temp_common" 'BEGIN{
+    awk -v common="$temp_common" -v add_indices="$add_indices" 'BEGIN{
       # Read common headers into an array
       while((getline line < common) > 0){
         headers[line]=1
       }
-      RS=">"; ORS=""
+      RS=">"; ORS="";
+      idx_count=0 # Initialize index counter
     }
     {
       if($0 != ""){
@@ -1119,7 +1157,13 @@ else
           for(i=2; i<=n; i++){
             seq = seq lines[i]
           }
-          print ">" header "\n" seq "\n"
+          idx_count++ # Increment counter for each sequence written
+          # Conditionally prepend index based on add_indices flag
+          if (add_indices == "true") {
+              print ">{" idx_count "}" header "\n" seq "\n"
+          } else {
+              print ">" header "\n" seq "\n"
+          }
         }
       }
     }' "$infile" > "$outfile"
@@ -1127,8 +1171,8 @@ else
   
   # Apply the filtering to each file
   # First, filter the full sequences
-  filter_by_common_headers "$full_filtered" "$output_dir/FULL_seqs.fasta"
-  verbose_echo "  Full sequences after cross-region filtering written to: $output_dir/FULL_seqs.fasta"
+  filter_by_common_headers "$full_filtered" "$out_dir/FULL_seqs.fasta"
+  verbose_echo "  Full sequences after cross-region filtering written to: $out_dir/FULL_seqs.fasta"
   
   # Then for each region, filter its sequences
   for region in "${!region_specs[@]}"; do
@@ -1136,7 +1180,7 @@ else
       continue
     fi
     region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
-    output_region="$output_dir/${region}_seqs.fasta"
+    output_region="$out_dir/${region}_seqs.fasta"
     filter_by_common_headers "$region_file" "$output_region"
     verbose_echo "  Filtered truncated sequences for region $region written to: $output_region"
   done
@@ -1155,10 +1199,10 @@ fi
 # Write the "failed" sequences that didn't pass filtering
 # Specifically, write the full length sequences that are present in the input file but not in the filtered output
 verbose_echo "  Writing sequences that failed filtering..."
-failed_output="$output_dir/failed_FULL_seqs.fasta"
+failed_output="$out_dir/failed_FULL_seqs.fasta"
 
 # Extract headers from the filtered FASTA file into a temporary file
-grep "^>" "$output_dir/FULL_seqs.fasta" | sed 's/^>//' > "${intermediates_dir}/passed_headers.txt"
+grep "^>" "$out_dir/FULL_seqs.fasta" | sed 's/^>//' > "${intermediates_dir}/passed_headers.txt"
 
 # Compare input against filtered and write sequences not in filtered to failed output
 awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
@@ -1194,7 +1238,7 @@ rm "${intermediates_dir}/passed_headers.txt"
 # ===================================================================================================
 # Generate about file
 # ===================================================================================================
-# Writes a summary file to ./Output/about_extraction.txt
+# Writes a summary file to $out_dir/about_extraction.txt
 # Contains:
 #  - Input parameters and options used
 #  - Reference sequence IDs and region parameters
@@ -1211,6 +1255,7 @@ verbose_echo "Generating about_extraction.txt summary file..."
   echo "  Bacteria HMM: $bac_hmm"
   echo "  Archaea HMM: $arc_hmm"
   echo "  Truncation specification file: $trunc_spec_file"
+  echo "  Output directory: $out_dir"
   echo "  Options:"
   echo "    Skip alignment: $skip_align"
   if [ "$no_filter_ambiguous" = true ]; then
@@ -1219,9 +1264,15 @@ verbose_echo "Generating about_extraction.txt summary file..."
     echo "    Filter ambiguous bases: Enabled"
   fi
   if [ "$no_require_all_regions" = true ]; then
-    echo "    Require all regions: Not required"
+    echo "    Require all regions: Disabled"
+    echo "    Add indices: Disabled (incompatible with --no_require_all_regions)"
   else
-    echo "    Require all regions: Required"
+    echo "    Require all regions: Enabled"
+    if [ "$add_indices" = true ]; then
+      echo "    Add indices: Enabled"
+    else
+      echo "    Add indices: Disabled"
+    fi
   fi
   echo "    Remove intermediates: $rm_intermediates"
   echo "    Truncation padding: $trunc_padding"
@@ -1263,8 +1314,15 @@ verbose_echo "Generating about_extraction.txt summary file..."
     perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_out/$total_seqs*100)}")
     echo "Region $region: $region_passed passed, $filtered_out filtered out ($perc_passed% passed, $perc_filtered% filtered)"
   done
+  # Calculate final passed count based on the actual output file
+  final_output_full="$out_dir/FULL_seqs.fasta"
+  if [ -f "$final_output_full" ]; then
+    passed_seqs=$(grep -c "^>" "$final_output_full")
+  else
+    passed_seqs=0 # Handle case where file might not exist if no seqs pass
+  fi
+  
   if [ "$no_require_all_regions" = false ]; then
-    passed_seqs=$(grep -c "^>" "$output_dir/FULL_seqs.fasta")
     filtered_all=$(( total_seqs - passed_seqs ))
     perc_passed=$(awk "BEGIN {printf \"%.2f\", ($passed_seqs/$total_seqs*100)}")
     perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_all/$total_seqs*100)}")
@@ -1299,20 +1357,20 @@ verbose_echo "Generating about_extraction.txt summary file..."
     rm "${intermediates_dir}/temp_lengths.txt"
   }
   echo -n "Full sequence lengths: "
-  calc_length_stats "$output_dir/FULL_seqs.fasta"
+  calc_length_stats "$out_dir/FULL_seqs.fasta"
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
     echo -n "Region $region lengths: "
-    calc_length_stats "$output_dir/${region}_seqs.fasta"
+    calc_length_stats "$out_dir/${region}_seqs.fasta"
   done
   echo -n "Failed sequence lengths: "
-  calc_length_stats "$output_dir/failed_FULL_seqs.fasta"
+  calc_length_stats "$out_dir/failed_FULL_seqs.fasta"
   echo ""
   echo "Processing completed on: $(date)"
-} > "$output_dir/about_extraction.txt"
-verbose_echo "about_extraction.txt written to: $output_dir/about_extraction.txt"
+} > "$out_dir/about_extraction.txt"
+verbose_echo "about_extraction.txt written to: $out_dir/about_extraction.txt"
 
 
 
@@ -1343,5 +1401,5 @@ execution_time=$((end_time - start_time))
 minutes=$((execution_time / 60))
 seconds=$((execution_time % 60))
 # Print done and execution time
-echo "Done. All output files have been written to: $output_dir"
+echo "Done. All output files have been written to: $out_dir"
 echo "Total execution time: ${minutes} minutes and ${seconds} seconds."

@@ -45,7 +45,7 @@ extract16s/
 ├── Intermediates/                 # Created during execution
 │   └── ...                        # Various intermediate files
 │
-└── Output/                       # Final output directory
+└── Output/                       # Default output directory (configurable via --out_dir)
     ├── FULL_seqs.fasta           # Filtered full-length sequences
     ├── V3_seqs.fasta             # Extracted V3 region sequences
     ├── V3-V4_seqs.fasta          # Extracted V3-V4 region sequences
@@ -73,7 +73,9 @@ bash ./Scripts/extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [
 - `--no_require_all_regions`: Don't require sequences to be successfully extracted for all regions
 - `--rm_intermediates`: Remove intermediate files after processing
 - `--trunc_padding N`: Add N bases of padding to each side of extracted regions (default: 0)
+- `--out_dir PATH`: Specify the output directory (default: `./Output`)
 - `--verbose`: Print detailed progress information during processing
+- `--add_indices`: Prepend unique indices ({1}, {2}, ...) to output FASTA headers (ignored if `--no_require_all_regions` is used).
 
 ### Example
 
@@ -138,16 +140,26 @@ These HMM files are taken from the [barrnap](https://github.com/tseemann/barrnap
 
 ## Output Files
 
-The tool generates several output files in the `Output/` directory:
+The tool generates several output files in the directory specified by `--out_dir` (defaults to `./Output/`):
 
 - `FULL_seqs.fasta`: Full-length sequences that passed filters
-- `{REGION}_seqs.fasta`: Extracted sequences for each region (e.g., V3_seqs.fasta, V3-V4_seqs.fasta)
+- `{REGION}_seqs.fasta`: Extracted sequences for each region (e.g., `V3_seqs.fasta`, `V3-V4_seqs.fasta`)
+- `failed_FULL_seqs.fasta`: Sequences that failed one or more filtering steps (full length)
 - `about_extraction.txt`: Summary of processing details, including:
   - Input parameters
   - Reference sequence IDs
   - Region extraction parameters
   - Filtering statistics
   - Processing timestamps
+
+If the `--add_indices` flag is used (and `--no_require_all_regions` is not), the output FASTA files will have headers prepended with a unique index:
+
+```
+>{1}GB_GCA_000488855.1~KI535272.1 d__Bacteria;p__Bacillota_A;c__Clostridia;o__Peptostreptococcales;f__Anaerovoracaceae;g__Gallibacter;s__Gallibacter brachus [location=411..1920] [ssu_len=1510] [contig_len=1959]
+GGCAGCAGTGGGGAATATTGCACAATGGGGGAAACCCTGATGCAGCAACGCCGCGTGAA...
+>{2}GB_GCA_000494145.1~AWOE01000013.1 d__Archaea;p__Thermoproteota;c__Nitrososphaeria_A;o__Caldarchaeales;f__Calditenuaceae;g__Calditenuis;s__Calditenuis sp000494145 [location=10546..12034] [ssu_len=1489] [contig_len=32668]
+CGCCCGTAGCCGGCCCGGTGTGTCCCTCGTTAAATCCACGGGCTTAACCCGTGGGCTGC...
+```
 
 ## Processing Steps
 
@@ -159,7 +171,7 @@ The tool generates several output files in the `Output/` directory:
    - Length (based on min_len, max_len, and padding)
    - Ambiguous base content (unless --no_filter_ambiguous is used)
 6. Optionally, sequences absent in any region are filtered out
-7. Final files are written to the Output directory
+7. Final files are written to the specified output directory (`--out_dir`)
 
 ## License
 
