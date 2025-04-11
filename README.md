@@ -73,6 +73,7 @@ bash ./Scripts/extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [
 - `--no_require_all_regions`: Don't require sequences to be successfully extracted for all regions
 - `--rm_intermediates`: Remove intermediate files after processing
 - `--trunc_padding N`: Add N bases of padding to each side of extracted regions (default: 0)
+- `--inter_dir PATH`: Specify the intermediate files directory (default: `./Intermediates`)
 - `--out_dir PATH`: Specify the output directory (default: `./Output`)
 - `--verbose`: Print detailed progress information during processing
 - `--add_indices`: Prepend unique indices ({1}, {2}, ...) to output FASTA headers (ignored if `--no_require_all_regions` is used).

@@ -11,6 +11,10 @@
 #       (Assuming they exist at: ./Intermediates/01_align_arc_ssu.a2m and ./Intermediates/01_align_bac_ssu.a2m)
 #       (This is good to rerun the truncation process without re-running the alignment process saving much time)
 #  - If --rm_intermediates flag is given, removes the Intermediates directory after processing.
+#  - If --inter_dir PATH is given, specifies the intermediates directory (default: ./Intermediates)
+#  - If --out_dir PATH is given, specifies the output directory (default: ./Output)
+#  - If --verbose flag is given, prints verbose output
+#  - If --add_indices flag is given, prepends unique indices ({1}, {2}, ...) to output FASTA headers (ignored if --no_require_all_regions is used).
 
 
 
@@ -45,6 +49,7 @@
 #   --trunc_padding N         Add N bases of padding to each side of extracted regions (default: 0)
 #                            For example, with --trunc_padding 10 and a region specified as
 #                            positions 500-700, the actual extraction would be from 490-710
+#   --inter_dir PATH          Specify the intermediates directory (default: ./Intermediates)
 #   --out_dir PATH            Specify the output directory (default: ./Output)
 #   --verbose                 Print verbose output
 #   --add_indices             Prepend unique indices ({1}, {2}, ...) to output FASTA headers (ignored if --no_require_all_regions is used).
@@ -64,15 +69,15 @@
 #  nhmmer_root/
 #  │
 #  ├── InputData
-#  │   ├── arc_16s.hmm                      # HMM database for rRNA models
-#  │   ├── bac_16s.hmm                      # HMM database for rRNA models
-#  │   ├── ssu_all_r220_filtered.fna        # FASTA file with sequences to analyze
-#  │   └── trunc_spec_v4_v3-v4.truncspec    # Truncation specification file
+#  │   ├── arc_16s.hmm                      # HMM database for rRNA models
+#  │   ├── bac_16s.hmm                      # HMM database for rRNA models
+#  │   ├── ssu_all_r220_filtered.fna        # FASTA file with sequences to analyze
+#  │   └── trunc_spec_v4_v3-v4.truncspec    # Truncation specification file
 #  │
 #  ├── Scripts/
 #  │   └── extract16s.sh  # Main script
 #  │
-#  └── Intermediates/    # (all created during script execution)
+#  └── Intermediates/    # (created during script execution, configurable via --inter_dir)
 #  │   ├── 00_full_seqs_arc.fna                # Archaea full length sequences
 #  │   ├── 00_full_seqs_bac.fna                # Bacteria full length sequences
 #  │   ├── 01_align_arc_ssu.sto                # Archaea alignment
@@ -86,7 +91,7 @@
 #  │   ├── 05_filtered_truncated_{REGION_NAME}.fna  # Filtered truncated sequences
 #  │   └── 06_filtered_full_seqs.fna           # Filtered full sequences
 #  │
-#  └── Output/
+#  └── Output/           # (created during script execution, configurable via --out_dir)
 #      ├── FULL_seqs.fasta                # Full length sequences (same as input FASTA file, but filtered)
 #      ├── {REGION_NAME}_seqs.fasta       # Extracted sequences for each region
 #      ├── failed_FULL_seqs.fasta         # Sequences that failed filtering
@@ -294,6 +299,7 @@ trunc_padding=0
 verbose=false
 out_dir="./Output"
 add_indices=false
+intermediates_dir="./Intermediates"
 
 i=5  # Start after the four required positional arguments
 while [ $i -le $# ]; do
@@ -332,6 +338,17 @@ while [ $i -le $# ]; do
         exit 1
       fi
       ;;
+    "--inter_dir")
+      # Get the next argument as the intermediates directory path
+      i=$((i+1))
+      if [ $i -le $# ]; then
+        intermediates_dir="${!i}"
+        verbose_echo "Using intermediates directory: $intermediates_dir"
+      else
+        echo "Error: --inter_dir requires a value"
+        exit 1
+      fi
+      ;;
     "--out_dir")
       # Get the next argument as the output directory path
       i=$((i+1))
@@ -365,6 +382,7 @@ verbose_echo "  Input FASTA: $input_fna"
 verbose_echo "  Bacteria HMM: $bac_hmm"
 verbose_echo "  Archaea HMM: $arc_hmm"
 verbose_echo "  Truncation specification file: $trunc_spec_file"
+verbose_echo "  Intermediates Directory: $intermediates_dir"
 verbose_echo "  Output Directory: $out_dir"
 
 
@@ -460,10 +478,14 @@ fi
 # ===================================================================================================
 # Create intermediate directory
 # ===================================================================================================
-intermediates_dir="./Intermediates"
+# Validate and create intermediate directory
+if [ -e "$intermediates_dir" ] && [ ! -d "$intermediates_dir" ]; then
+  echo "Error: Intermediate path '$intermediates_dir' exists but is not a directory."
+  exit 1
+fi
 mkdir -p "$intermediates_dir"
 verbose_echo ""
-verbose_echo "Created intermediates directory: $intermediates_dir"
+verbose_echo "Ensured intermediate directory exists: $intermediates_dir"
 
 
 
@@ -1255,6 +1277,7 @@ verbose_echo "Generating about_extraction.txt summary file..."
   echo "  Bacteria HMM: $bac_hmm"
   echo "  Archaea HMM: $arc_hmm"
   echo "  Truncation specification file: $trunc_spec_file"
+  echo "  Intermediates directory: $intermediates_dir"
   echo "  Output directory: $out_dir"
   echo "  Options:"
   echo "    Skip alignment: $skip_align"
