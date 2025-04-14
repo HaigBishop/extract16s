@@ -190,6 +190,9 @@ This project includes or depends on the following third-party software and data:
   - License: GNU General Public License v3.0
   - Modified subset used for 16S rRNA gene detection
 
+## Potential Future Updates
+ - Add full length sequence min/max
+
 ## Contact
 
 For questions, issues, or suggestions, please contact:

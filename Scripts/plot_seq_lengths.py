@@ -24,7 +24,9 @@ import matplotlib.pyplot as plt
 # --- Constants ---
 TARGET_DIR = "./Output/"
 SHOW_PLOTS = False # Display plots interactively?
-BIN_SIZE = 50      # Histogram bin width for sequence lengths
+# Histogram bin widths for sequence lengths
+BIN_SIZE_FULL_SEQ = 20       # For files with "FULL" in filename
+BIN_SIZE_OTHER_SEQS = 2      # For files without "FULL" in filename
 
 
 
@@ -96,7 +98,8 @@ if __name__ == "__main__":
         print(f"Found {len(fasta_files)} FASTA files to process.")
 
         for fasta_file in fasta_files:
+            bin_size = BIN_SIZE_FULL_SEQ if "FULL" in fasta_file else BIN_SIZE_OTHER_SEQS
             print(f"Processing: {fasta_file}")
-            plot_sequence_lengths(fasta_file, output_dir, BIN_SIZE, SHOW_PLOTS)
+            plot_sequence_lengths(fasta_file, output_dir, bin_size, SHOW_PLOTS)
 
         print("Finished processing all files.")
