@@ -192,6 +192,7 @@ This project includes or depends on the following third-party software and data:
 
 ## Potential Future Updates
  - Add full length sequence min/max
+ - Add 99 Percentile length stats
 
 ## Contact
 
