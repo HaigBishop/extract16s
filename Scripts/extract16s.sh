@@ -1253,8 +1253,8 @@ fi
 verbose_echo "  Writing sequences that failed filtering..."
 failed_output="$out_dir/failed_FULL_seqs.fasta"
 
-# Extract accession IDs from the filtered FASTA file into a temporary file
-grep "^>" "$out_dir/FULL_seqs.fasta" | sed 's/^>//' | awk '{print $1}' > "${intermediates_dir}/passed_headers.txt"
+# Extract accession IDs from the filtered FASTA file into a temporary file, removing any {index} prefix
+grep "^>" "$out_dir/FULL_seqs.fasta" | sed 's/^>//' | sed 's/^{.*}//' | awk '{print $1}' > "${intermediates_dir}/passed_headers.txt"
 
 # Compare input against filtered and write sequences not in filtered to failed output
 awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
@@ -1283,10 +1283,6 @@ awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
     }
   }
 }' "$input_fna" > "$failed_output"
-
-# Clean up temporary headers file
-rm "${intermediates_dir}/passed_headers.txt"
-
 
 
 
@@ -1391,11 +1387,22 @@ verbose_echo "Generating about_extraction.txt summary file..."
   calc_length_stats() {
     local fasta_file=$1
     awk 'BEGIN {RS=">"; ORS=""} 
-    NR>1 {
-      seq=""
-      for(i=2; i<=NF; i++) seq = seq $i
-      print length(seq) "\n"
+    NR > 1 {
+      # Split the record by newline
+      n = split($0, lines, "\n")
+      # Concatenate lines after the header (lines[1])
+      seq = ""
+      for (i = 2; i <= n; i++) {
+        if (lines[i] != "") { # Avoid adding empty lines
+          seq = seq lines[i]
+        }
+      }
+      # Print length if sequence is not empty
+      if (seq != "") {
+          print length(seq) "\n"
+      }
     }' "$fasta_file" | sort -n > "${intermediates_dir}/temp_lengths.txt"
+    
     local count=$(wc -l < "${intermediates_dir}/temp_lengths.txt")
     if [ "$count" -gt 0 ]; then
       local min=$(head -n 1 "${intermediates_dir}/temp_lengths.txt")
