@@ -197,7 +197,7 @@ This project includes or depends on the following third-party software and data:
 ## Contact
 
 For questions, issues, or suggestions, please contact:
-- Email: haigvbishop@gmail.com
+- Email: haig.bishop@pg.canterbury.ac.nz  
 
 ---
 Created by Haig Bishop, 2025

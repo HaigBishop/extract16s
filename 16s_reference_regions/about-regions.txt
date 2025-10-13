@@ -1,0 +1,6 @@
+The regions.csv file originates from:
+- https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-016-0992-y/tables/1
+- Sensitivity and correlation of hypervariable regions in 16S rRNA genes in phylogenetic analysis
+- https://doi.org/10.1186/s12859-016-0992-y
+
+These positions were used to infer the regions for our E. coli sequence using a difference of 42 to get the "RS_GCF_000194175.1~NZ_AEZI02000002.1" columns.

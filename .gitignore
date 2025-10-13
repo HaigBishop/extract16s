@@ -1,3 +1,5 @@
 InputData/ssu_all_r220_filtered.fna
 Intermediates/*.fna
 Intermediates/*.sto
+.~lock.*
+silva.nr_v138_1
