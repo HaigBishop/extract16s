@@ -1318,7 +1318,7 @@ fi
 #    FASTA but are not present in the final FULL_seqs.fasta output.
 #  - Additionally, for each region we write failed_{REGION_NAME}_seqs.fasta which mirrors the
 #    headers and order of failed_FULL_seqs.fasta. If a failed sequence has a truncated region
-#    available (from 05_filtered_truncated_{REGION_NAME}.fna) we include it; otherwise, we
+#    available (from 04_reordered_truncated_{REGION_NAME}.fna) we include it; otherwise, we
 #    write an empty sequence line. This guarantees each failed_{REGION_NAME}_seqs.fasta has
 #    exactly the same number of lines as failed_FULL_seqs.fasta (one header + one sequence line
 #    per record), even when region extraction failed.
@@ -1365,7 +1365,7 @@ for region in "${!region_specs[@]}"; do
   if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
     continue
   fi
-  region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
+  region_file="${intermediates_dir}/04_reordered_truncated_${region}.fna"
   failed_region_output="$out_dir/failed_${region}_seqs.fasta"
 
   # Build a map of accession -> truncated sequence from the region file,
