@@ -23,8 +23,11 @@
 
 
 # Output: Directory with results:
-#     - FULL_seqs.fasta: Full length sequences
-#     - [NAME]_seqs.fasta: Extracted sequences
+#     - FULL_seqs.fasta: Full length sequences that passed filtering
+#     - [NAME]_seqs.fasta: Extracted sequences that passed filtering for each region
+#     - failed_FULL_seqs.fasta: Full length sequences that failed filtering
+#     - failed_{REGION_NAME}_seqs.fasta: For each region, sequences corresponding to failed set
+#         (headers mirror failed_FULL; empty sequence lines where region extraction failed)
 #     - about_extraction.txt: Summary of processing details
 
 
@@ -93,8 +96,9 @@
 #  │
 #  └── Output/           # (created during script execution, configurable via --out_dir)
 #      ├── FULL_seqs.fasta                # Full length sequences (same as input FASTA file, but filtered)
-#      ├── {REGION_NAME}_seqs.fasta       # Extracted sequences for each region
-#      ├── failed_FULL_seqs.fasta         # Sequences that failed filtering
+#      ├── {REGION_NAME}_seqs.fasta           # Extracted sequences for each region
+#      ├── failed_FULL_seqs.fasta             # Full-length sequences that failed filtering
+#      ├── failed_{REGION_NAME}_seqs.fasta    # Region sequences for failed set; empty lines where extraction failed
 #      └── about_extraction.txt           # Summary of processing details
 
 
@@ -1248,8 +1252,15 @@ fi
 # ===================================================================================================
 # Write failed sequences
 # ===================================================================================================
-# Write the "failed" sequences that didn't pass filtering
-# Specifically, write the full length sequences that are present in the input file but not in the filtered output
+# Write the "failed" sequences that didn't pass filtering.
+#  - failed_FULL_seqs.fasta contains full-length sequences that are present in the input
+#    FASTA but are not present in the final FULL_seqs.fasta output.
+#  - Additionally, for each region we write failed_{REGION_NAME}_seqs.fasta which mirrors the
+#    headers and order of failed_FULL_seqs.fasta. If a failed sequence has a truncated region
+#    available (from 05_filtered_truncated_{REGION_NAME}.fna) we include it; otherwise, we
+#    write an empty sequence line. This guarantees each failed_{REGION_NAME}_seqs.fasta has
+#    exactly the same number of lines as failed_FULL_seqs.fasta (one header + one sequence line
+#    per record), even when region extraction failed.
 verbose_echo "  Writing sequences that failed filtering..."
 failed_output="$out_dir/failed_FULL_seqs.fasta"
 
@@ -1283,6 +1294,61 @@ awk -v passed="${intermediates_dir}/passed_headers.txt" 'BEGIN {
     }
   }
 }' "$input_fna" > "$failed_output"
+
+# For each region, create a corresponding failed_{REGION_NAME}_seqs.fasta
+# This file:
+#  - Preserves the header order of failed_FULL_seqs.fasta
+#  - Prints the truncated region sequence if available
+#  - Prints an empty sequence line if the region extraction failed for that header
+for region in "${!region_specs[@]}"; do
+  if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+    continue
+  fi
+  region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
+  failed_region_output="$out_dir/failed_${region}_seqs.fasta"
+
+  # Build a map of accession -> truncated sequence from the region file,
+  # then iterate over failed_FULL_seqs.fasta in order to write outputs.
+  awk 'BEGIN { RS=">"; ORS="" }
+    # First pass: load region sequences keyed by accession
+    FNR==NR {
+      if ($0 != "") {
+        n = split($0, lines, "\n")
+        header = lines[1]
+        accession = header
+        if (index(header, " ") > 0) {
+          accession = substr(header, 1, index(header, " ")-1)
+        }
+        seq = ""
+        for (i=2; i<=n; i++) {
+          seq = seq lines[i]
+        }
+        region_seq[accession] = seq
+      }
+      next
+    }
+    # Second pass: iterate over failed_FULL_seqs.fasta to preserve order and headers
+    {
+      if ($0 != "") {
+        n = split($0, lines, "\n")
+        failed_header = lines[1]
+        accession = failed_header
+        if (index(failed_header, " ") > 0) {
+          accession = substr(failed_header, 1, index(failed_header, " ")-1)
+        }
+        # Print header and corresponding region sequence if available,
+        # otherwise print an empty sequence line.
+        print ">" failed_header "\n"
+        if (accession in region_seq) {
+          print region_seq[accession] "\n"
+        } else {
+          print "\n"
+        }
+      }
+    }' "$region_file" "$failed_output" > "$failed_region_output"
+
+  verbose_echo "  Failed truncated sequences for region $region written to: $failed_region_output"
+done
 
 
 

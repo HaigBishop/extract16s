@@ -49,7 +49,9 @@ extract16s/
     ├── FULL_seqs.fasta           # Filtered full-length sequences
     ├── V3_seqs.fasta             # Extracted V3 region sequences
     ├── V3-V4_seqs.fasta          # Extracted V3-V4 region sequences
-    ├── failed_FULL_seqs.fasta    # Sequences that failed filtering
+    ├── failed_FULL_seqs.fasta    # Full-length sequences that failed filtering
+    ├── failed_V3_seqs.fasta      # Region sequences for failed set (empty lines where extraction failed)
+    ├── failed_V3-V4_seqs.fasta   # Region sequences for failed set (empty lines where extraction failed)
     └── about_extraction.txt      # Summary of processing details
 ```
 
@@ -146,6 +148,10 @@ The tool generates several output files in the directory specified by `--out_dir
 - `FULL_seqs.fasta`: Full-length sequences that passed filters
 - `{REGION}_seqs.fasta`: Extracted sequences for each region (e.g., `V3_seqs.fasta`, `V3-V4_seqs.fasta`)
 - `failed_FULL_seqs.fasta`: Sequences that failed one or more filtering steps (full length)
+- `failed_{REGION}_seqs.fasta`: For each region, region sequences for the failed set.
+  - Uses the same headers and order as `failed_FULL_seqs.fasta`
+  - If a failed sequence lacks an extracted region, its sequence line is left empty
+  - Guarantees the file has the same total number of lines as `failed_FULL_seqs.fasta` (one header + one sequence line per record)
 - `about_extraction.txt`: Summary of processing details, including:
   - Input parameters
   - Reference sequence IDs
