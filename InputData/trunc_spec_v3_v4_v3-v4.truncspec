@@ -1,0 +1,15 @@
+# 16S Region Truncation Specification File (.truncspec)
+# This file specifies the reference sequence IDs and the regions to be extracted
+# from sequence alignments. It guides scripts to focus on specific 16S rRNA regions.
+# ARC_REF_SEQ_ID and BAC_REF_SEQ_ID identify the reference sequences in alignments.
+# Each region (e.g., V4, V3-V4) has start and end positions for both archaeal and
+# bacterial sequences, defining the truncation boundaries.
+# min_len and max_len specify the expected minimum and maximum sequence lengths 
+# after truncation for QC filtering purposes.
+# Comments (lines starting with '#') are ignored by processing scripts.
+
+ARC_REF_SEQ_ID: RS_GCF_000025685.1~NC_013967.1
+BAC_REF_SEQ_ID: RS_GCF_000194175.1~NZ_AEZI02000002.1
+V3: arc_start=309, arc_end=448, bac_start=349, bac_end=529, min_len=150, max_len=240
+V4: arc_start=472, arc_end=725, bac_start=531, bac_end=783, min_len=245, max_len=260
+V3-V4: arc_start=337, arc_end=723, bac_start=355, bac_end=781, min_len=365, max_len=440

@@ -377,6 +377,19 @@ if [ "$add_indices" = true ] && [ "$no_require_all_regions" = true ]; then
   add_indices=false # Prevent adding indices later
 fi
 
+# Initialize associative arrays for tracking filter counts
+# Per-region counts by domain
+declare -A region_bac_extracted region_arc_extracted
+declare -A region_bac_passed region_arc_passed
+declare -A region_bac_length_fail region_arc_length_fail
+declare -A region_bac_ambig_fail region_arc_ambig_fail
+declare -A region_bac_extract_fail region_arc_extract_fail
+# Full sequence counts
+full_bac_passed=0
+full_arc_passed=0
+full_bac_ambig_fail=0
+full_arc_ambig_fail=0
+
 verbose_echo "Input parameters:"
 verbose_echo "  Input FASTA: $input_fna"
 verbose_echo "  Bacteria HMM: $bac_hmm"
@@ -482,6 +495,23 @@ if ! grep -q "$bac_ref" "$input_fna"; then
 fi
 
 
+# ===================================================================================================
+# Count input sequences by domain
+# ===================================================================================================
+# Count bacterial, archaeal, and other/unclassified sequences in the input FASTA
+bac_input_count=$(grep -c "d__Bacteria" "$input_fna" 2>/dev/null || echo "0")
+arc_input_count=$(grep -c "d__Archaea" "$input_fna" 2>/dev/null || echo "0")
+other_input_count=$(awk 'BEGIN{count=0} /^>/ && !/d__Bacteria/ && !/d__Archaea/ {count++} END{print count}' "$input_fna")
+total_input_count=$((bac_input_count + arc_input_count + other_input_count))
+
+verbose_echo ""
+verbose_echo "Input sequence counts by domain:"
+verbose_echo "  Bacteria: $bac_input_count"
+verbose_echo "  Archaea: $arc_input_count"
+if [ "$other_input_count" -gt 0 ]; then
+  verbose_echo "  Other/Unclassified: $other_input_count"
+fi
+verbose_echo "  Total: $total_input_count"
 
 
 
@@ -948,6 +978,16 @@ for region in "${!region_specs[@]}"; do
   ' "$joined_truncated_file" "$input_fna" > "$merged_output"
 
   verbose_echo "  Region '$region' extraction complete. Output written to: $merged_output"
+
+  # Count extracted sequences by domain for this region
+  region_bac_extracted["$region"]=$(grep -c "d__Bacteria" "$merged_output" 2>/dev/null || echo "0")
+  region_arc_extracted["$region"]=$(grep -c "d__Archaea" "$merged_output" 2>/dev/null || echo "0")
+  
+  # Calculate extraction failures (sequences in input but not in extracted output)
+  region_bac_extract_fail["$region"]=$((bac_input_count - ${region_bac_extracted["$region"]}))
+  region_arc_extract_fail["$region"]=$((arc_input_count - ${region_arc_extracted["$region"]}))
+  
+  verbose_echo "  Extracted counts - Bacteria: ${region_bac_extracted["$region"]}, Archaea: ${region_arc_extracted["$region"]}"
 done
 
 
@@ -1011,44 +1051,72 @@ for region in "${!region_specs[@]}"; do
   # Input and output files
   input_file="${intermediates_dir}/04_reordered_truncated_${region}.fna"
   output_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
+  counts_file="${intermediates_dir}/counts_filter_${region}.txt"
   
-  # If ambiguous base filtering is disabled
-  if [ "$no_filter_ambiguous" = true ]; then
-    # Apply length filtering only
-    awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
-    {
-      if($0 != ""){
-        n = split($0, lines, "\n")
-        header = lines[1]
-        seq = ""
-        for(i=2; i<=n; i++){
-          seq = seq lines[i]
-        }
-        if(length(seq) >= lb && length(seq) <= ub){
-          print ">" header "\n" seq "\n"
-        }
+  # Filter with counting - track by reason and domain
+  # Counts format: passed_bac passed_arc fail_len_bac fail_len_arc fail_ambig_bac fail_ambig_arc
+  filter_ambig_flag="$( [ "$no_filter_ambiguous" = true ] && echo "false" || echo "true" )"
+  
+  awk -v lb="$lower_bound" -v ub="$upper_bound" -v counts_file="$counts_file" \
+      -v filter_ambig="$filter_ambig_flag" '
+  BEGIN { 
+    RS=">"; ORS=""
+    passed_bac=0; passed_arc=0
+    fail_len_bac=0; fail_len_arc=0
+    fail_ambig_bac=0; fail_ambig_arc=0
+  }
+  {
+    if($0 != ""){
+      n = split($0, lines, "\n")
+      header = lines[1]
+      seq = ""
+      for(i=2; i<=n; i++){
+        seq = seq lines[i]
       }
-    }' "$input_file" > "$output_file"
-
-  # If ambiguous base filtering is enabled
-  else
-    # Apply both length and ambiguous-base filtering (only A, T, C, G allowed)
-    awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
-    {
-      if($0 != ""){
-        n = split($0, lines, "\n")
-        header = lines[1]
-        seq = ""
-        for(i=2; i<=n; i++){
-          seq = seq lines[i]
-        }
-        if(length(seq) >= lb && length(seq) <= ub && seq ~ /^[ATCG]+$/){
-          print ">" header "\n" seq "\n"
-        }
+      
+      # Determine domain
+      is_bac = (header ~ /d__Bacteria/)
+      is_arc = (header ~ /d__Archaea/)
+      
+      # Check length
+      len_ok = (length(seq) >= lb && length(seq) <= ub)
+      
+      # Check ambiguous (only if filter_ambig is true)
+      if (filter_ambig == "true") {
+        ambig_ok = (seq ~ /^[ATCG]+$/)
+      } else {
+        ambig_ok = 1
       }
-    }' "$input_file" > "$output_file"
-  fi
+      
+      # Categorize and count (length failure takes priority over ambiguous)
+      if (!len_ok) {
+        if (is_bac) fail_len_bac++
+        else if (is_arc) fail_len_arc++
+      } else if (!ambig_ok) {
+        if (is_bac) fail_ambig_bac++
+        else if (is_arc) fail_ambig_arc++
+      } else {
+        if (is_bac) passed_bac++
+        else if (is_arc) passed_arc++
+        print ">" header "\n" seq "\n"
+      }
+    }
+  }
+  END {
+    print passed_bac, passed_arc, fail_len_bac, fail_len_arc, fail_ambig_bac, fail_ambig_arc > counts_file
+  }' "$input_file" > "$output_file"
+  
+  # Read counts from file
+  read pb pa flb fla fab faa < "$counts_file"
+  region_bac_passed["$region"]=$pb
+  region_arc_passed["$region"]=$pa
+  region_bac_length_fail["$region"]=$flb
+  region_arc_length_fail["$region"]=$fla
+  region_bac_ambig_fail["$region"]=$fab
+  region_arc_ambig_fail["$region"]=$faa
+  
   verbose_echo "  Filtered truncated sequences written to: $output_file"
+  verbose_echo "  Filtering counts - Passed: Bac=$pb Arc=$pa, Length fail: Bac=$flb Arc=$fla, Ambig fail: Bac=$fab Arc=$faa"
 done
 
 
@@ -1068,16 +1136,26 @@ verbose_echo "Filtering full sequences from input FASTA..."
 
 # Output file
 full_filtered="${intermediates_dir}/06_filtered_full_seqs.fna"
+full_counts_file="${intermediates_dir}/counts_filter_full.txt"
 
 # If ambiguous base filtering is disabled
 if [ "$no_filter_ambiguous" = true ]; then
-  # Simply copy the input FASTA
+  # Simply copy the input FASTA, set counts to input counts (all pass)
   cp "$input_fna" "$full_filtered"
+  full_bac_passed=$bac_input_count
+  full_arc_passed=$arc_input_count
+  full_bac_ambig_fail=0
+  full_arc_ambig_fail=0
 
 # If ambiguous base filtering is enabled
 else
-  # Filter based on ambiguous base content
-  awk 'BEGIN { RS=">"; ORS="" }
+  # Filter based on ambiguous base content with counting
+  awk -v counts_file="$full_counts_file" '
+  BEGIN { 
+    RS=">"; ORS=""
+    passed_bac=0; passed_arc=0
+    fail_ambig_bac=0; fail_ambig_arc=0
+  }
   {
     if($0 != ""){
       n = split($0, lines, "\n")
@@ -1089,14 +1167,31 @@ else
       # Remove potential problematic characters (like carriage returns) and convert to uppercase
       gsub(/\r/, "", seq)
       seq = toupper(seq)
+      
+      # Determine domain
+      is_bac = (header ~ /d__Bacteria/)
+      is_arc = (header ~ /d__Archaea/)
+      
       # Only print records with sequences of A, T, C, G only (now case-insensitive)
       if(seq ~ /^[ATCG]+$/){
+        if (is_bac) passed_bac++
+        else if (is_arc) passed_arc++
         print ">" header "\n" seq "\n"
+      } else {
+        if (is_bac) fail_ambig_bac++
+        else if (is_arc) fail_ambig_arc++
       }
     }
+  }
+  END {
+    print passed_bac, passed_arc, fail_ambig_bac, fail_ambig_arc > counts_file
   }' "$input_fna" > "$full_filtered"
+  
+  # Read counts from file
+  read full_bac_passed full_arc_passed full_bac_ambig_fail full_arc_ambig_fail < "$full_counts_file"
 fi
 verbose_echo "  Filtered full sequences written to: $full_filtered"
+verbose_echo "  Full seq counts - Passed: Bac=$full_bac_passed Arc=$full_arc_passed, Ambig fail: Bac=$full_bac_ambig_fail Arc=$full_arc_ambig_fail"
 
 
 
@@ -1126,6 +1221,30 @@ verbose_echo "  Filtered full sequences written to: $full_filtered"
 # All .fasta output files are written to ./Output/
 #  - ./Output/{REGION}_seqs.fasta
 #  - ./Output/FULL_seqs.fasta
+
+# Initialize cross-region tracking variables with defaults
+# (These are only populated when require_all_regions is enabled)
+final_passed_bac=0
+final_passed_arc=0
+final_passed_all=0
+xr_missing_domain_bac=0
+xr_missing_domain_arc=0
+xr_missing_domain_all=0
+xr_extract_fail_bac=0
+xr_extract_fail_arc=0
+xr_extract_fail_all=0
+xr_length_fail_bac=0
+xr_length_fail_arc=0
+xr_length_fail_all=0
+xr_ambig_fail_bac=0
+xr_ambig_fail_arc=0
+xr_ambig_fail_all=0
+xr_full_ambig_bac=0
+xr_full_ambig_arc=0
+xr_full_ambig_all=0
+xr_other_bac=0
+xr_other_arc=0
+xr_other_all=0
 
 # If we do not require all regions -----------------------------
 if [ "$no_require_all_regions" = true ]; then
@@ -1237,6 +1356,221 @@ else
     verbose_echo "  Filtered truncated sequences for region $region written to: $output_region"
   done
 
+  # ===================================================================================================
+  # Compute cross-region failure breakdown (mutually exclusive categories)
+  # ===================================================================================================
+  # For each sequence that failed, determine WHY it failed and categorize uniquely.
+  # Priority order for mutual exclusivity:
+  #   1. due_to_missing_domain - not classified as Bacteria or Archaea
+  #   2. due_to_extraction_failed - failed extraction in at least one region
+  #   3. due_to_region_length - failed length filter in at least one region
+  #   4. due_to_region_ambiguous - failed ambiguous filter in at least one region
+  #   5. due_to_full_ambiguous_only - passed all regions but failed full ambiguous filter
+  #   6. other_unknown - any remaining unexplained failures
+  
+  verbose_echo "  Computing cross-region failure breakdown..."
+  
+  # Create accession lists for each step in the pipeline
+  all_input_acc="${intermediates_dir}/all_input_accessions.txt"
+  grep '^>' "$input_fna" | sed 's/^>//' | awk '{print $1}' > "$all_input_acc"
+  
+  # Accessions that passed final filtering (from common_headers before it was used)
+  final_passed_acc="${intermediates_dir}/final_passed_accessions.txt"
+  grep '^>' "$out_dir/FULL_seqs.fasta" | sed 's/^>//' | sed 's/^{[0-9]*}//' | awk '{print $1}' > "$final_passed_acc"
+  
+  # Accessions that failed (in input but not in final output)
+  failed_acc="${intermediates_dir}/failed_accessions.txt"
+  grep -Fxvf "$final_passed_acc" "$all_input_acc" > "$failed_acc"
+  
+  # Count final passed by domain
+  final_passed_bac=$(grep -c "d__Bacteria" "$out_dir/FULL_seqs.fasta" 2>/dev/null || echo "0")
+  final_passed_arc=$(grep -c "d__Archaea" "$out_dir/FULL_seqs.fasta" 2>/dev/null || echo "0")
+  final_passed_all=$((final_passed_bac + final_passed_arc))
+  
+  # Initialize cross-region failure counters
+  xr_missing_domain_all=0  # Missing domain is tracked as "all" only (no bac/arc distinction)
+  xr_extract_fail_bac=0
+  xr_extract_fail_arc=0
+  xr_length_fail_bac=0
+  xr_length_fail_arc=0
+  xr_ambig_fail_bac=0
+  xr_ambig_fail_arc=0
+  xr_full_ambig_bac=0
+  xr_full_ambig_arc=0
+  xr_other_bac=0
+  xr_other_arc=0
+  
+  # For each failed accession, determine domain and failure reason
+  # We need to check where in the pipeline each accession was lost
+  
+  # Create lookup files for each stage
+  # Accessions that passed full ambiguous filter
+  full_passed_acc="${intermediates_dir}/full_passed_accessions.txt"
+  grep '^>' "$full_filtered" | sed 's/^>//' | awk '{print $1}' > "$full_passed_acc"
+  
+  # For each region, create lists of accessions that passed each filter
+  for region in "${!region_specs[@]}"; do
+    if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+      continue
+    fi
+    # Accessions present after extraction (04_reordered)
+    grep '^>' "${intermediates_dir}/04_reordered_truncated_${region}.fna" 2>/dev/null | sed 's/^>//' | awk '{print $1}' > "${intermediates_dir}/extracted_${region}.txt"
+    # Accessions present after filtering (05_filtered)
+    grep '^>' "${intermediates_dir}/05_filtered_truncated_${region}.fna" 2>/dev/null | sed 's/^>//' | awk '{print $1}' > "${intermediates_dir}/filtered_${region}.txt"
+  done
+  
+  # Process each failed accession to determine failure reason
+  while IFS= read -r acc; do
+    # Determine domain from input file
+    domain=$(grep -m1 "^>$acc" "$input_fna" | grep -o "d__[^;]*" | head -1)
+    is_bac=false
+    is_arc=false
+    if [[ "$domain" == "d__Bacteria" ]]; then
+      is_bac=true
+    elif [[ "$domain" == "d__Archaea" ]]; then
+      is_arc=true
+    fi
+    
+    # Check failure reason in priority order
+    reason=""
+    
+    # 1. Check if missing domain classification
+    if [[ "$domain" != "d__Bacteria" && "$domain" != "d__Archaea" ]]; then
+      reason="missing_domain"
+    fi
+    
+    # 2. Check if extraction failed in any region
+    if [[ -z "$reason" ]]; then
+      for region in "${!region_specs[@]}"; do
+        if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+          continue
+        fi
+        if ! grep -Fxq "$acc" "${intermediates_dir}/extracted_${region}.txt" 2>/dev/null; then
+          reason="extract_fail"
+          break
+        fi
+      done
+    fi
+    
+    # 3. Check if length filter failed in any region
+    if [[ -z "$reason" ]]; then
+      for region in "${!region_specs[@]}"; do
+        if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+          continue
+        fi
+        # Was extracted but not in filtered = failed filtering
+        if grep -Fxq "$acc" "${intermediates_dir}/extracted_${region}.txt" 2>/dev/null; then
+          if ! grep -Fxq "$acc" "${intermediates_dir}/filtered_${region}.txt" 2>/dev/null; then
+            # Need to determine if it was length or ambiguous failure
+            # Get the sequence from the extracted file and check
+            seq=$(awk -v acc="$acc" 'BEGIN{RS=">"; ORS=""} {
+              n=split($0,lines,"\n"); hdr=lines[1]; 
+              a=hdr; if(index(hdr," ")>0) a=substr(hdr,1,index(hdr," ")-1);
+              if(a==acc){s=""; for(i=2;i<=n;i++) s=s lines[i]; print s}
+            }' "${intermediates_dir}/04_reordered_truncated_${region}.fna")
+            seq_len=${#seq}
+            min_len=$(echo "${region_specs[$region]}" | grep -oE 'min_len=[0-9]+' | cut -d'=' -f2)
+            max_len=$(echo "${region_specs[$region]}" | grep -oE 'max_len=[0-9]+' | cut -d'=' -f2)
+            lower_bound=$((min_len + 2 * trunc_padding))
+            upper_bound=$((max_len + 2 * trunc_padding))
+            if [[ $seq_len -lt $lower_bound || $seq_len -gt $upper_bound ]]; then
+              reason="length_fail"
+              break
+            fi
+          fi
+        fi
+      done
+    fi
+    
+    # 4. Check if ambiguous filter failed in any region
+    if [[ -z "$reason" ]]; then
+      for region in "${!region_specs[@]}"; do
+        if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+          continue
+        fi
+        if grep -Fxq "$acc" "${intermediates_dir}/extracted_${region}.txt" 2>/dev/null; then
+          if ! grep -Fxq "$acc" "${intermediates_dir}/filtered_${region}.txt" 2>/dev/null; then
+            reason="ambig_fail"
+            break
+          fi
+        fi
+      done
+    fi
+    
+    # 5. Check if full ambiguous filter failed
+    if [[ -z "$reason" ]]; then
+      if ! grep -Fxq "$acc" "$full_passed_acc" 2>/dev/null; then
+        reason="full_ambig"
+      fi
+    fi
+    
+    # 6. Other/unknown
+    if [[ -z "$reason" ]]; then
+      reason="other"
+    fi
+    
+    # Increment appropriate counter
+    case "$reason" in
+      "missing_domain")
+        # Missing domain doesn't have bac/arc distinction - count in "all" only
+        xr_missing_domain_all=$((xr_missing_domain_all + 1))
+        ;;
+      "extract_fail")
+        if [[ "$is_bac" == "true" ]]; then
+          xr_extract_fail_bac=$((xr_extract_fail_bac + 1))
+        elif [[ "$is_arc" == "true" ]]; then
+          xr_extract_fail_arc=$((xr_extract_fail_arc + 1))
+        fi
+        ;;
+      "length_fail")
+        if [[ "$is_bac" == "true" ]]; then
+          xr_length_fail_bac=$((xr_length_fail_bac + 1))
+        elif [[ "$is_arc" == "true" ]]; then
+          xr_length_fail_arc=$((xr_length_fail_arc + 1))
+        fi
+        ;;
+      "ambig_fail")
+        if [[ "$is_bac" == "true" ]]; then
+          xr_ambig_fail_bac=$((xr_ambig_fail_bac + 1))
+        elif [[ "$is_arc" == "true" ]]; then
+          xr_ambig_fail_arc=$((xr_ambig_fail_arc + 1))
+        fi
+        ;;
+      "full_ambig")
+        if [[ "$is_bac" == "true" ]]; then
+          xr_full_ambig_bac=$((xr_full_ambig_bac + 1))
+        elif [[ "$is_arc" == "true" ]]; then
+          xr_full_ambig_arc=$((xr_full_ambig_arc + 1))
+        fi
+        ;;
+      "other")
+        if [[ "$is_bac" == "true" ]]; then
+          xr_other_bac=$((xr_other_bac + 1))
+        elif [[ "$is_arc" == "true" ]]; then
+          xr_other_arc=$((xr_other_arc + 1))
+        fi
+        ;;
+    esac
+  done < "$failed_acc"
+  
+  # Calculate totals (xr_missing_domain_all is already accumulated in the loop)
+  xr_extract_fail_all=$((xr_extract_fail_bac + xr_extract_fail_arc))
+  xr_length_fail_all=$((xr_length_fail_bac + xr_length_fail_arc))
+  xr_ambig_fail_all=$((xr_ambig_fail_bac + xr_ambig_fail_arc))
+  xr_full_ambig_all=$((xr_full_ambig_bac + xr_full_ambig_arc))
+  xr_other_all=$((xr_other_bac + xr_other_arc))
+  
+  verbose_echo "  Cross-region breakdown computed."
+  
+  # Clean up temporary accession files
+  rm -f "$all_input_acc" "$final_passed_acc" "$failed_acc" "$full_passed_acc"
+  for region in "${!region_specs[@]}"; do
+    if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+      continue
+    fi
+    rm -f "${intermediates_dir}/extracted_${region}.txt" "${intermediates_dir}/filtered_${region}.txt"
+  done
+  
   # Clean up temporary common headers file
   rm "$temp_common"
 fi
@@ -1383,6 +1717,102 @@ verbose_echo "Generating about_extraction.txt summary file..."
     echo "All regions: $passed_seqs passed, $filtered_all filtered ($perc_passed% passed, $perc_filtered% filtered)"
   fi
   echo ""
+  
+  # -------------------------------------------------------------------------
+  # Filtering Breakdown Section
+  # -------------------------------------------------------------------------
+  echo "Filtering Breakdown:"
+  echo "  (Counts shown as: Bacteria / Archaea / All)"
+  echo ""
+  echo "  Input Sequences:"
+  echo "    Total: $bac_input_count / $arc_input_count / $total_input_count"
+  if [ "$other_input_count" -gt 0 ]; then
+    echo "    Unclassified (no d__Bacteria or d__Archaea): $other_input_count"
+  fi
+  echo ""
+  
+  # Per-region breakdown
+  for region in "${!region_specs[@]}"; do
+    if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
+      continue
+    fi
+    
+    # Get counts for this region
+    r_bac_ext=${region_bac_extracted["$region"]:-0}
+    r_arc_ext=${region_arc_extracted["$region"]:-0}
+    r_all_ext=$((r_bac_ext + r_arc_ext))
+    
+    r_bac_pass=${region_bac_passed["$region"]:-0}
+    r_arc_pass=${region_arc_passed["$region"]:-0}
+    r_all_pass=$((r_bac_pass + r_arc_pass))
+    
+    r_bac_len=${region_bac_length_fail["$region"]:-0}
+    r_arc_len=${region_arc_length_fail["$region"]:-0}
+    r_all_len=$((r_bac_len + r_arc_len))
+    
+    r_bac_ext_fail=${region_bac_extract_fail["$region"]:-0}
+    r_arc_ext_fail=${region_arc_extract_fail["$region"]:-0}
+    r_all_ext_fail=$((r_bac_ext_fail + r_arc_ext_fail))
+    
+    if [ "$no_filter_ambiguous" = true ]; then
+      r_bac_ambig="n/a"
+      r_arc_ambig="n/a"
+      r_all_ambig="n/a"
+    else
+      r_bac_ambig=${region_bac_ambig_fail["$region"]:-0}
+      r_arc_ambig=${region_arc_ambig_fail["$region"]:-0}
+      r_all_ambig=$((r_bac_ambig + r_arc_ambig))
+    fi
+    
+    echo "  Region $region:"
+    echo "    Passed: $r_bac_pass / $r_arc_pass / $r_all_pass"
+    echo "    Filtered (length): $r_bac_len / $r_arc_len / $r_all_len"
+    echo "    Filtered (ambiguous): $r_bac_ambig / $r_arc_ambig / $r_all_ambig"
+    echo "    Extraction failed: $r_bac_ext_fail / $r_arc_ext_fail / $r_all_ext_fail"
+  done
+  echo ""
+  
+  # Full sequences (pre cross-region)
+  echo "  Full Sequences (pre cross-region):"
+  full_all_passed=$((full_bac_passed + full_arc_passed))
+  echo "    Passed: $full_bac_passed / $full_arc_passed / $full_all_passed"
+  if [ "$no_filter_ambiguous" = true ]; then
+    echo "    Filtered (ambiguous): n/a / n/a / n/a"
+  else
+    full_all_ambig=$((full_bac_ambig_fail + full_arc_ambig_fail))
+    echo "    Filtered (ambiguous): $full_bac_ambig_fail / $full_arc_ambig_fail / $full_all_ambig"
+  fi
+  echo ""
+  
+  # Cross-region breakdown (only when require_all_regions is enabled)
+  if [ "$no_require_all_regions" = false ]; then
+    echo "  Cross-Region Filtering (final, mutually exclusive categories):"
+    echo "    Final passed: $final_passed_bac / $final_passed_arc / $final_passed_all"
+    
+    # Show failure reasons
+    if [ "$other_input_count" -gt 0 ]; then
+      echo "    Failed (missing domain): $xr_missing_domain_all"
+    fi
+    echo "    Failed (extraction): $xr_extract_fail_bac / $xr_extract_fail_arc / $xr_extract_fail_all"
+    echo "    Failed (region length): $xr_length_fail_bac / $xr_length_fail_arc / $xr_length_fail_all"
+    if [ "$no_filter_ambiguous" = true ]; then
+      echo "    Failed (region ambiguous): n/a / n/a / n/a"
+      echo "    Failed (full ambiguous only): n/a / n/a / n/a"
+    else
+      echo "    Failed (region ambiguous): $xr_ambig_fail_bac / $xr_ambig_fail_arc / $xr_ambig_fail_all"
+      echo "    Failed (full ambiguous only): $xr_full_ambig_bac / $xr_full_ambig_arc / $xr_full_ambig_all"
+    fi
+    if [ "$xr_other_all" -gt 0 ]; then
+      echo "    Failed (other/unknown): $xr_other_bac / $xr_other_arc / $xr_other_all"
+    fi
+    
+    # Verification sum
+    total_accounted=$((final_passed_all + xr_missing_domain_all + xr_extract_fail_all + xr_length_fail_all + xr_ambig_fail_all + xr_full_ambig_all + xr_other_all))
+    echo "    ---"
+    echo "    Total accounted: $total_accounted (input: $total_input_count)"
+  fi
+  echo ""
+  
   echo "Sequence Length Statistics:"
   calc_length_stats() {
     local fasta_file=$1

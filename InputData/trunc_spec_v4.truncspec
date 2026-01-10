@@ -1,0 +1,31 @@
+# 16S Region Truncation Specification File (.truncspec)
+# This file specifies the reference sequence IDs and the regions to be extracted
+# from sequence alignments. It guides scripts to focus on specific 16S rRNA regions.
+# ARC_REF_SEQ_ID and BAC_REF_SEQ_ID identify the reference sequences in alignments.
+# Each region (e.g., V4, V3-V4) has start and end positions for both archaeal and
+# bacterial sequences, defining the truncation boundaries.
+# min_len and max_len specify the expected minimum and maximum sequence lengths 
+# after truncation for QC filtering purposes.
+# Comments (lines starting with '#') are ignored by processing scripts.
+
+ARC_REF_SEQ_ID: RS_GCF_000025685.1~NC_013967.1
+BAC_REF_SEQ_ID: RS_GCF_000194175.1~NZ_AEZI02000002.1
+#V1-V2: arc_start=27, arc_end=308, bac_start=50, bac_end=348, min_len=240, max_len=380
+#V1-V3: arc_start=27, arc_end=448, bac_start=50, bac_end=529, min_len=400, max_len=560
+#V2: arc_start=95, arc_end=308, bac_start=139, bac_end=348, min_len=190, max_len=290
+#V3: arc_start=309, arc_end=448, bac_start=349, bac_end=529, min_len=150, max_len=240
+#V3-V4: arc_start=337, arc_end=723, bac_start=355, bac_end=781, min_len=370, max_len=500
+#V3-V5: arc_start=309, arc_end=851, bac_start=349, bac_end=927, min_len=520, max_len=660
+V4: arc_start=472, arc_end=725, bac_start=531, bac_end=783, min_len=240, max_len=340
+#V4-V5: arc_start=449, arc_end=851, bac_start=530, bac_end=927, min_len=380, max_len=460
+#V4-V6: arc_start=449, arc_end=993, bac_start=530, bac_end=1071, min_len=500, max_len=630
+#V5: arc_start=709, arc_end=851, bac_start=789, bac_end=927, min_len=120, max_len=220
+#V5-V6: arc_start=709, arc_end=993, bac_start=789, bac_end=1071, min_len=270, max_len=350
+#V5-V7: arc_start=709, arc_end=1152, bac_start=789, bac_end=1222, min_len=390, max_len=520
+#V6: arc_start=913, arc_end=993, bac_start=928, bac_end=1071, min_len=70, max_len=240
+#V6-V8: arc_start=852, arc_end=1344, bac_start=928, bac_end=1414, min_len=450, max_len=580
+#V7-V8: arc_start=994, arc_end=1344, bac_start=1072, bac_end=1414, min_len=310, max_len=430
+#V7-V9: arc_start=994, arc_end=1402, bac_start=1072, bac_end=1510, min_len=390, max_len=520
+#V8: arc_start=1153, arc_end=1344, bac_start=1223, bac_end=1414, min_len=170, max_len=270
+#V8-V9: arc_start=1153, arc_end=1402, bac_start=1223, bac_end=1510, min_len=230, max_len=370
+#V9: arc_start=1345, arc_end=1402, bac_start=1415, bac_end=1510, min_len=70, max_len=180
