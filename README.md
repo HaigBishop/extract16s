@@ -13,7 +13,7 @@ Key features:
 - Filters sequences by length and ambiguous base content
 - Extracts multiple variable regions (V3, V4, V3-V4, etc.) in a single run
 
-This script can take ~120 minutes to run, or ~5 minutes if using `--skip_align`.
+This script can take ~90 minutes to run, or ~2 minutes if using `--skip_align`.
 
 ## Requirements
 
