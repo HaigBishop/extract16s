@@ -4,6 +4,7 @@
 # extract16s.sh - A script for extracting variable regions from 16S rRNA sequences. Made for Ubuntu.
 #  - Uses HMMs to extract regions.
 #  - Unless --no_filter_ambiguous flag is given, filter sequences by ambiguous base content (non-ATCG bases)
+#  - If --no_filter_ambiguous_for_full flag is given (without --no_filter_ambiguous), only skip ambiguous filtering for the full-length sequences
 #  - Unless --no_require_all_regions flag is given, only keep sequences successfully extracted for all regions
 #  - If --add_indices flag is given (and --no_require_all_regions is NOT), prepend unique indices (e.g., {1}, {2}) to output FASTA headers.
 #  - If using with Micro16S, the <input_fna> given to this script should the output of the filter_database.py script.
@@ -47,6 +48,8 @@
 # Options:
 #   --skip_align              Skip alignment process (use existing alignments)
 #   --no_filter_ambiguous     Skip filtering by ambiguous base content
+#   --no_filter_ambiguous_for_full
+#                            Skip ambiguous base filtering for the full-length sequences only
 #   --no_require_all_regions  Don't require sequences to be present in all regions
 #   --rm_intermediates        Remove intermediate files after processing
 #   --trunc_padding N         Add N bases of padding to each side of extracted regions (default: 0)
@@ -297,6 +300,7 @@ arc_hmm="$3"
 trunc_spec_file="$4"
 skip_align=false
 no_filter_ambiguous=false
+no_filter_ambiguous_for_full=false
 no_require_all_regions=false
 rm_intermediates=false
 trunc_padding=0
@@ -317,6 +321,10 @@ while [ $i -le $# ]; do
     "--no_filter_ambiguous")
       no_filter_ambiguous=true
       verbose_echo "Skipping ambiguous base content filtering as --no_filter_ambiguous flag is set."
+      ;;
+    "--no_filter_ambiguous_for_full")
+      no_filter_ambiguous_for_full=true
+      verbose_echo "Full-length sequences will not be filtered for ambiguous bases as --no_filter_ambiguous_for_full flag is set."
       ;;
     "--no_require_all_regions")
       no_require_all_regions=true
@@ -379,6 +387,10 @@ done
 if [ "$add_indices" = true ] && [ "$no_require_all_regions" = true ]; then
   echo "Warning: --add_indices cannot be used with --no_require_all_regions. Indices will not be added." >&2
   add_indices=false # Prevent adding indices later
+fi
+
+if [ "$no_filter_ambiguous" = true ] && [ "$no_filter_ambiguous_for_full" = true ]; then
+  verbose_echo "Note: --no_filter_ambiguous overrides --no_filter_ambiguous_for_full."
 fi
 
 verbose_echo "Input parameters:"
@@ -1002,7 +1014,7 @@ for region in "${!region_specs[@]}"; do
   # ===================================================================================================
   # For each region, we filter the truncated sequences based on:
   #  - Length must be between (min_len+2*trunc_padding) and (max_len+2*trunc_padding)
-  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
+  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used; --no_filter_ambiguous_for_full only affects the full-length sequences)
   # The filtered sequences are written to ./Intermediates/05_filtered_truncated_{REGION_NAME}.fna
 
   # Extract min and max lengths from the region specification
@@ -1089,7 +1101,7 @@ done
   # Filter full sequences
   # ===================================================================================================
   # We filter the full length sequences based on:
-  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
+  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used, or --no_filter_ambiguous_for_full is provided)
   # The filtered sequences are written to ./Intermediates/06_filtered_full_seqs.fna
   # We also collect statistics for the about_extraction.txt file
 
@@ -1101,7 +1113,7 @@ done
   
   # Set check_ambig flag
   check_ambig=1
-  if [ "$no_filter_ambiguous" = true ]; then
+  if [ "$no_filter_ambiguous" = true ] || [ "$no_filter_ambiguous_for_full" = true ]; then
     check_ambig=0
   fi
 
@@ -1429,6 +1441,9 @@ verbose_echo "Generating about_extraction.txt summary file..."
   echo "    Skip alignment: $skip_align"
   if [ "$no_filter_ambiguous" = true ]; then
     echo "    Filter ambiguous bases: Disabled"
+  elif [ "$no_filter_ambiguous_for_full" = true ]; then
+    echo "    Filter ambiguous bases (regions): Enabled"
+    echo "    Filter ambiguous bases (full sequences): Disabled"
   else
     echo "    Filter ambiguous bases: Enabled"
   fi

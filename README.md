@@ -72,6 +72,7 @@ bash ./Scripts/extract16s.sh <input_fna> <bac_hmm> <arc_hmm> <trunc_spec_file> [
 
 - `--skip_align`: Skip alignment process (if run before, this can use existing alignments in Intermediates/)
 - `--no_filter_ambiguous`: Skip filtering by ambiguous base content
+- `--no_filter_ambiguous_for_full`: Only skip ambiguous-base filtering for the full-length sequences (regions stay filtered unless `--no_filter_ambiguous` is also used)
 - `--no_require_all_regions`: Don't require sequences to be successfully extracted for all regions
 - `--rm_intermediates`: Remove intermediate files after processing
 - `--trunc_padding N`: Add N bases of padding to each side of extracted regions (default: 0)
@@ -176,7 +177,7 @@ CGCCCGTAGCCGGCCCGGTGTGTCCCTCGTTAAATCCACGGGCTTAACCCGTGGGCTGC...
 4. Variable regions are extracted based on the truncation specification
 5. Sequences are filtered by:
    - Length (based on min_len, max_len, and padding)
-   - Ambiguous base content (unless --no_filter_ambiguous is used)
+   - Ambiguous base content (unless `--no_filter_ambiguous` is used; `--no_filter_ambiguous_for_full` only relaxes this for the full-length sequences)
 6. Optionally, sequences absent in any region are filtered out
 7. Final files are written to the specified output directory (`--out_dir`)
 
