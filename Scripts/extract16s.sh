@@ -1017,41 +1017,65 @@ for region in "${!region_specs[@]}"; do
   output_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
   
   # If ambiguous base filtering is disabled
+  check_ambig=1
   if [ "$no_filter_ambiguous" = true ]; then
-    # Apply length filtering only
-    awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
-    {
-      if($0 != ""){
-        n = split($0, lines, "\n")
-        header = lines[1]
-        seq = ""
-        for(i=2; i<=n; i++){
-          seq = seq lines[i]
-        }
-        if(length(seq) >= lb && length(seq) <= ub){
-          print ">" header "\n" seq "\n"
-        }
-      }
-    }' "$input_file" > "$output_file"
-
-  # If ambiguous base filtering is enabled
-  else
-    # Apply both length and ambiguous-base filtering (only A, T, C, G allowed)
-    awk -v lb="$lower_bound" -v ub="$upper_bound" 'BEGIN { RS=">"; ORS="" }
-    {
-      if($0 != ""){
-        n = split($0, lines, "\n")
-        header = lines[1]
-        seq = ""
-        for(i=2; i<=n; i++){
-          seq = seq lines[i]
-        }
-        if(length(seq) >= lb && length(seq) <= ub && seq ~ /^[ATCG]+$/){
-          print ">" header "\n" seq "\n"
-        }
-      }
-    }' "$input_file" > "$output_file"
+    check_ambig=0
   fi
+  
+  stats_file="${intermediates_dir}/stats_${region}.txt"
+
+  # Apply filtering and collect stats
+  awk -v lb="$lower_bound" -v ub="$upper_bound" -v check_ambig="$check_ambig" -v stats_file="$stats_file" '
+  BEGIN { 
+      RS=">"; ORS=""; 
+      bac_tot=0; bac_ext=0; bac_len=0; bac_amb=0; bac_pass=0;
+      arc_tot=0; arc_ext=0; arc_len=0; arc_amb=0; arc_pass=0;
+  }
+  {
+    if($0 != ""){
+      n = split($0, lines, "\n")
+      header = lines[1]
+      seq = ""
+      for(i=2; i<=n; i++){
+        seq = seq lines[i]
+      }
+      
+      # Identify type
+      is_bac = (header ~ /d__Bacteria/)
+      
+      if (is_bac) bac_tot++
+      else arc_tot++
+      
+      # Check extraction (length 0)
+      len = length(seq)
+      if (len == 0) {
+          if (is_bac) bac_ext++
+          else arc_ext++
+      }
+      # Check Length
+      else if (len < lb || len > ub) {
+           if (is_bac) bac_len++
+           else arc_len++
+      }
+      # Check Ambiguous
+      else if (check_ambig == 1 && seq !~ /^[ATCG]+$/) {
+           if (is_bac) bac_amb++
+           else arc_amb++
+      }
+      else {
+           if (is_bac) bac_pass++
+           else arc_pass++
+           print ">" header "\n" seq "\n"
+      }
+    }
+  }
+  END {
+      # Format: TYPE:TOTAL,EXT_FAIL,LEN_FAIL,AMBIG_FAIL,PASSED
+      print "BAC:" bac_tot "," bac_ext "," bac_len "," bac_amb "," bac_pass "\n" > stats_file
+      print "ARC:" arc_tot "," arc_ext "," arc_len "," arc_amb "," arc_pass "\n" >> stats_file
+  }
+  ' "$input_file" > "$output_file"
+  
   verbose_echo "  Filtered truncated sequences written to: $output_file"
 done
 
@@ -1062,26 +1086,32 @@ done
 
 
 # ===================================================================================================
-# Filter full sequences
-# ===================================================================================================
-# We filter the full length sequences based on:
-#  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
-# The filtered sequences are written to ./Intermediates/06_filtered_full_seqs.fna
+  # Filter full sequences
+  # ===================================================================================================
+  # We filter the full length sequences based on:
+  #  - Ambiguous base content must be 0% (unless --no_filter_ambiguous is used)
+  # The filtered sequences are written to ./Intermediates/06_filtered_full_seqs.fna
+  # We also collect statistics for the about_extraction.txt file
 
-verbose_echo "Filtering full sequences from input FASTA..."
+  verbose_echo "Filtering full sequences from input FASTA..."
 
-# Output file
-full_filtered="${intermediates_dir}/06_filtered_full_seqs.fna"
+  # Output file
+  full_filtered="${intermediates_dir}/06_filtered_full_seqs.fna"
+  full_stats="${intermediates_dir}/stats_full.txt"
+  
+  # Set check_ambig flag
+  check_ambig=1
+  if [ "$no_filter_ambiguous" = true ]; then
+    check_ambig=0
+  fi
 
-# If ambiguous base filtering is disabled
-if [ "$no_filter_ambiguous" = true ]; then
-  # Simply copy the input FASTA
-  cp "$input_fna" "$full_filtered"
-
-# If ambiguous base filtering is enabled
-else
-  # Filter based on ambiguous base content
-  awk 'BEGIN { RS=">"; ORS="" }
+  # Filter and collect stats
+  awk -v check_ambig="$check_ambig" -v stats_file="$full_stats" '
+  BEGIN { 
+      RS=">"; ORS=""; 
+      bac_tot=0; bac_amb=0; bac_pass=0;
+      arc_tot=0; arc_amb=0; arc_pass=0;
+  }
   {
     if($0 != ""){
       n = split($0, lines, "\n")
@@ -1093,14 +1123,33 @@ else
       # Remove potential problematic characters (like carriage returns) and convert to uppercase
       gsub(/\r/, "", seq)
       seq = toupper(seq)
-      # Only print records with sequences of A, T, C, G only (now case-insensitive)
-      if(seq ~ /^[ATCG]+$/){
-        print ">" header "\n" seq "\n"
+      
+      # Identify type
+      is_bac = (header ~ /d__Bacteria/)
+      
+      if (is_bac) bac_tot++
+      else arc_tot++
+      
+      # Check Ambiguous
+      if (check_ambig == 1 && seq !~ /^[ATCG]+$/) {
+           if (is_bac) bac_amb++
+           else arc_amb++
+      }
+      else {
+           if (is_bac) bac_pass++
+           else arc_pass++
+           print ">" header "\n" seq "\n"
       }
     }
-  }' "$input_fna" > "$full_filtered"
-fi
-verbose_echo "  Filtered full sequences written to: $full_filtered"
+  }
+  END {
+      # Format: TYPE:TOTAL,AMBIG_FAIL,PASSED
+      print "BAC:" bac_tot "," bac_amb "," bac_pass "\n" > stats_file
+      print "ARC:" arc_tot "," arc_amb "," arc_pass "\n" >> stats_file
+  }
+  ' "$input_fna" > "$full_filtered"
+
+  verbose_echo "  Filtered full sequences written to: $full_filtered"
 
 
 
@@ -1421,32 +1470,150 @@ verbose_echo "Generating about_extraction.txt summary file..."
     echo "    Valid sequence length (with padding): $effective_min to $effective_max bp"
   done
   echo ""
-  total_seqs=$(grep -c "^>" "$input_fna")
-  echo "Total sequences in input FASTA: $total_seqs"
+  # =========================================================================
+  # Filtering Breakdown
+  # =========================================================================
+  
+  echo "Filtering Breakdown"
+  echo "==================="
+  
+  # Helper function to parse stats files
+  parse_stats() {
+    local file=$1
+    local prefix=$2
+    # Check if file exists
+    if [ ! -f "$file" ]; then
+        echo "    Stats file not found: $file"
+        return
+    fi
+    
+    local bac_line=$(grep "^BAC:" "$file" | cut -d':' -f2)
+    local arc_line=$(grep "^ARC:" "$file" | cut -d':' -f2)
+    
+    IFS=',' read -r -a bac_stats <<< "$bac_line"
+    IFS=',' read -r -a arc_stats <<< "$arc_line"
+    
+    # Calculate All
+    local all_stats=()
+    for i in {0..4}; do
+      # Default to 0 if empty
+      local b=${bac_stats[$i]:-0}
+      local a=${arc_stats[$i]:-0}
+      all_stats[$i]=$(( b + a ))
+    done
+    
+    # Print table
+    printf "    %-25s %-10s %-10s %-10s\n" "Category" "Bacteria" "Archaea" "All"
+    if [ "$prefix" == "FULL" ]; then
+        printf "    %-25s %-10s %-10s %-10s\n" "Total Processed:" "${bac_stats[0]}" "${arc_stats[0]}" "${all_stats[0]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Failed (Ambig):" "${bac_stats[1]}" "${arc_stats[1]}" "${all_stats[1]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Passed:" "${bac_stats[2]}" "${arc_stats[2]}" "${all_stats[2]}"
+    else
+        printf "    %-25s %-10s %-10s %-10s\n" "Total Processed:" "${bac_stats[0]}" "${arc_stats[0]}" "${all_stats[0]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Failed (Extraction):" "${bac_stats[1]}" "${arc_stats[1]}" "${all_stats[1]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Failed (Length):" "${bac_stats[2]}" "${arc_stats[2]}" "${all_stats[2]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Failed (Ambig):" "${bac_stats[3]}" "${arc_stats[3]}" "${all_stats[3]}"
+        printf "    %-25s %-10s %-10s %-10s\n" "Passed:" "${bac_stats[4]}" "${arc_stats[4]}" "${all_stats[4]}"
+    fi
+  }
+
+  echo "Full Sequences:"
+  parse_stats "${intermediates_dir}/stats_full.txt" "FULL"
+  echo ""
+
   for region in "${!region_specs[@]}"; do
     if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then
       continue
     fi
-    region_file="${intermediates_dir}/05_filtered_truncated_${region}.fna"
-    region_passed=$(grep -c "^>" "$region_file")
-    filtered_out=$(( total_seqs - region_passed ))
-    perc_passed=$(awk "BEGIN {printf \"%.2f\", ($region_passed/$total_seqs*100)}")
-    perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_out/$total_seqs*100)}")
-    echo "Region $region: $region_passed passed, $filtered_out filtered out ($perc_passed% passed, $perc_filtered% filtered)"
+    echo "Region $region:"
+    parse_stats "${intermediates_dir}/stats_${region}.txt" "REGION"
+    echo ""
   done
-  # Calculate final passed count based on the actual output file
-  final_output_full="$out_dir/FULL_seqs.fasta"
-  if [ -f "$final_output_full" ]; then
-    passed_seqs=$(grep -c "^>" "$final_output_full")
-  else
-    passed_seqs=0 # Handle case where file might not exist if no seqs pass
-  fi
-  
+
   if [ "$no_require_all_regions" = false ]; then
-    filtered_all=$(( total_seqs - passed_seqs ))
-    perc_passed=$(awk "BEGIN {printf \"%.2f\", ($passed_seqs/$total_seqs*100)}")
-    perc_filtered=$(awk "BEGIN {printf \"%.2f\", ($filtered_all/$total_seqs*100)}")
-    echo "All regions: $passed_seqs passed, $filtered_all filtered ($perc_passed% passed, $perc_filtered% filtered)"
+      echo "Cross-Region Summary (Require all regions: Enabled):"
+      
+      # Build region files array
+      region_files=()
+      for region in "${!region_specs[@]}"; do
+        if [[ "$region" == "ARC_REF_SEQ_ID" || "$region" == "BAC_REF_SEQ_ID" ]]; then continue; fi
+        region_files+=("${intermediates_dir}/05_filtered_truncated_${region}.fna")
+      done
+      
+      # Read Total and Passed (A) from stats_full.txt
+      full_stats_bac=$(grep "^BAC:" "${intermediates_dir}/stats_full.txt" | cut -d':' -f2)
+      IFS=',' read -r -a bs <<< "$full_stats_bac"
+      bac_total=${bs[0]:-0}
+      bac_A=${bs[2]:-0}
+      
+      full_stats_arc=$(grep "^ARC:" "${intermediates_dir}/stats_full.txt" | cut -d':' -f2)
+      IFS=',' read -r -a as <<< "$full_stats_arc"
+      arc_total=${as[0]:-0}
+      arc_A=${as[2]:-0}
+      
+      # Calculate intersections (B and C)
+      full_filtered_path="${intermediates_dir}/06_filtered_full_seqs.fna"
+
+      # AWK script to calculate B (Passed All Regions) and C (Passed Full & All Regions)
+      counts=$(awk '
+        BEGIN { bac_B=0; arc_B=0; bac_C=0; arc_C=0; }
+        /^>/ {
+           header = substr($0, 2);
+           accession = header;
+           if (index(header, " ") > 0) accession = substr(header, 1, index(header, " ")-1);
+           
+           is_bac = (header ~ /d__Bacteria/);
+           count[accession]++;
+           if (is_bac) type[accession]="bac"; else type[accession]="arc";
+           
+           # Check if in full file (first file)
+           if (FILENAME == ARGV[1]) in_full[accession] = 1;
+        }
+        END {
+            # Number of region files
+            num_regions = ARGC - 2;
+            
+            for (acc in count) {
+                c = count[acc];
+                f = (acc in in_full);
+                # Occurrences in region files = Total - (1 if in full else 0)
+                r = c - (f ? 1 : 0);
+                
+                if (r == num_regions) {
+                    # Passed All Regions (B)
+                    if (type[acc] == "bac") bac_B++; else arc_B++;
+                    
+                    if (f) {
+                        # Passed Full & All Regions (C)
+                        if (type[acc] == "bac") bac_C++; else arc_C++;
+                    }
+                }
+            }
+            print bac_B "," arc_B "," bac_C "," arc_C
+        }
+      ' "$full_filtered_path" "${region_files[@]}")
+      
+      IFS=',' read -r bac_B arc_B bac_C arc_C <<< "$counts"
+      
+      # Totals
+      bac_B=${bac_B:-0}; arc_B=${arc_B:-0}
+      bac_C=${bac_C:-0}; arc_C=${arc_C:-0}
+      
+      # Helper to print row
+      print_cr_row() {
+         local label=$1
+         local b=$2
+         local a=$3
+         local all=$(( b + a ))
+         printf "    %-40s %-10s %-10s %-10s\n" "$label" "$b" "$a" "$all"
+      }
+      
+      printf "    %-40s %-10s %-10s %-10s\n" "Category" "Bacteria" "Archaea" "All"
+      print_cr_row "Passed Full & All Regions (Total Passed):" "$bac_C" "$arc_C"
+      print_cr_row "Passed All Regions, Failed Full:" "$(( bac_B - bac_C ))" "$(( arc_B - arc_C ))"
+      print_cr_row "Passed Full, Failed >=1 Region:" "$(( bac_A - bac_C ))" "$(( arc_A - arc_C ))"
+      print_cr_row "Failed Full & Failed >=1 Region:" "$(( bac_total - (bac_A + bac_B - bac_C) ))" "$(( arc_total - (arc_A + arc_B - arc_C) ))"
+      echo ""
   fi
   echo ""
   echo "Sequence Length Statistics:"
