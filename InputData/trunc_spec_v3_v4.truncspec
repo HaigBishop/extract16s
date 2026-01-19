@@ -6,6 +6,7 @@
 # bacterial sequences, defining the truncation boundaries.
 # min_len and max_len specify the expected minimum and maximum sequence lengths 
 # after truncation for QC filtering purposes.
+# To be used with arc_ref_seq_1.txt and bac_ref_seq_1.txt
 # Comments (lines starting with '#') are ignored by processing scripts.
 
 ARC_REF_SEQ_ID: RS_GCF_000025685.1~NC_013967.1

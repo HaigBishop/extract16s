@@ -3,3 +3,5 @@ Intermediates/*.fna
 Intermediates/*.sto
 .~lock.*
 silva.nr_v138_1
+target_asvs
+create_truncspec_out*
