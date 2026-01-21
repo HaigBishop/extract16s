@@ -54,6 +54,10 @@ STAGED_DIR = INTER_DIR + "/01_staged_inputs"
 DATASET_TSV_SUFFIX = "_datasets.tsv"
 DATASET_TSV_ASV_COL = "ASV_ID"
 DATASET_TSV_DATASET_COL = "Dataset_ID"
+DATASET_TSV_REGION_COL = "Region"  # optional column
+
+# Default region value when no Region metadata is available
+UNKNOWN_REGION = "UNK"
 
 
 # =============================================================================
@@ -157,9 +161,13 @@ def find_ref_sequence(db_path, ref_id):
 def load_dataset_tsv(tsv_path):
     """Load a dataset metadata TSV file.
     
-    Returns dict mapping ASV_ID -> Dataset_ID.
+    Returns tuple: (asv_to_dataset, asv_to_region)
+    - asv_to_dataset: dict mapping ASV_ID -> Dataset_ID
+    - asv_to_region: dict mapping ASV_ID -> Region (or None if no Region column)
     """
     asv_to_dataset = {}
+    asv_to_region = {}
+    has_region_col = False
     
     with open(tsv_path, 'r') as f:
         # parse header to find column indices
@@ -169,6 +177,12 @@ def load_dataset_tsv(tsv_path):
             dataset_col_idx = header.index(DATASET_TSV_DATASET_COL)
         except ValueError as e:
             raise ValueError(f"TSV file {tsv_path} missing required columns: {e}")
+        
+        # check for optional Region column
+        region_col_idx = None
+        if DATASET_TSV_REGION_COL in header:
+            region_col_idx = header.index(DATASET_TSV_REGION_COL)
+            has_region_col = True
         
         # parse data rows
         for line_num, line in enumerate(f, start=2):
@@ -182,8 +196,12 @@ def load_dataset_tsv(tsv_path):
             asv_id = parts[asv_col_idx]
             dataset_id = parts[dataset_col_idx]
             asv_to_dataset[asv_id] = dataset_id
+            
+            # extract region if column exists
+            if has_region_col and region_col_idx < len(parts):
+                asv_to_region[asv_id] = parts[region_col_idx]
     
-    return asv_to_dataset
+    return asv_to_dataset, asv_to_region if has_region_col else None
 
 
 # =============================================================================
@@ -254,7 +272,7 @@ if __name__ == "__main__":
     print("Loading and validating ASVs...")
     
     # track all ASVs and their metadata
-    # list of (dataset_id, asv_id, source_fna, sequence)
+    # list of (dataset_id, asv_id, source_fna, region, sequence)
     all_asv_records = []
     
     # track ASV IDs globally for duplicate detection
@@ -262,6 +280,9 @@ if __name__ == "__main__":
     
     # track validation errors
     validation_errors = []
+    
+    # track region metadata availability
+    files_with_region_metadata = 0
     
     # process each FASTA file
     for fna_file in fna_files:
@@ -281,10 +302,14 @@ if __name__ == "__main__":
         
         # load dataset metadata if available
         asv_to_dataset = {}
+        asv_to_region = None
         if has_dataset_tsv:
             tsv_path = os.path.join(ASV_DIR, tsv_file)
-            asv_to_dataset = load_dataset_tsv(tsv_path)
+            asv_to_dataset, asv_to_region = load_dataset_tsv(tsv_path)
             print(f"    Loaded dataset metadata from {tsv_file}")
+            if asv_to_region is not None:
+                files_with_region_metadata += 1
+                print(f"    Found Region metadata for {len(asv_to_region)} ASVs")
         
         # load ASVs from FASTA
         asv_count = 0
@@ -312,19 +337,31 @@ if __name__ == "__main__":
                         f"{fna_file}: ASV '{asv_id}' present in FASTA but missing from {tsv_file}"
                     )
                     continue
-                # combine fna base with dataset ID for uniqueness
-                dataset_id = fna_base + "_" + asv_to_dataset[asv_id]
+                
+                # combine fna base with dataset ID for uniqueness, avoiding duplication
+                # if the dataset ID already includes the filename
+                dataset_val = asv_to_dataset[asv_id]
+                if dataset_val == fna_base or dataset_val.startswith(fna_base + "_"):
+                    dataset_id = dataset_val
+                else:
+                    dataset_id = fna_base + "_" + dataset_val
             else:
                 # use FASTA base name as dataset ID
                 dataset_id = fna_base
+            
+            # determine region (use UNK if not available)
+            if asv_to_region is not None and asv_id in asv_to_region:
+                region = asv_to_region[asv_id]
+            else:
+                region = UNKNOWN_REGION
             
             # validate dataset ID
             err = validate_id(dataset_id, "Dataset ID")
             if err:
                 validation_errors.append(f"{fna_file}: {err}")
             
-            # store record
-            all_asv_records.append((dataset_id, asv_id, fna_file, sequence))
+            # store record (now includes region)
+            all_asv_records.append((dataset_id, asv_id, fna_file, region, sequence))
         
         print(f"    Loaded {asv_count} ASVs")
     
@@ -345,7 +382,7 @@ if __name__ == "__main__":
     all_asvs_path = os.path.join(STAGED_DIR, "all_asvs.fna")
     
     with open(all_asvs_path, 'w') as f:
-        for dataset_id, asv_id, source_fna, sequence in all_asv_records:
+        for dataset_id, asv_id, source_fna, region, sequence in all_asv_records:
             # format: >dataset=XXX|asv=YYY|src=ZZZ.fna
             header = f">dataset={dataset_id}|asv={asv_id}|src={source_fna}"
             f.write(f"{header}\n{sequence}\n")
@@ -359,20 +396,27 @@ if __name__ == "__main__":
     
     # collect unique datasets and count ASVs per dataset
     dataset_counts = {}
-    for dataset_id, asv_id, source_fna, sequence in all_asv_records:
+    for dataset_id, asv_id, source_fna, region, sequence in all_asv_records:
         if dataset_id not in dataset_counts:
             dataset_counts[dataset_id] = 0
         dataset_counts[dataset_id] += 1
     
+    # count ASVs with known regions
+    asvs_with_known_region = sum(1 for _, _, _, r, _ in all_asv_records if r != UNKNOWN_REGION)
+    unique_regions = set(r for _, _, _, r, _ in all_asv_records if r != UNKNOWN_REGION)
+    
     with open(manifest_path, 'w') as f:
-        f.write("dataset_id\tasv_id\tsource_fna\n")
-        for dataset_id, asv_id, source_fna, sequence in all_asv_records:
-            f.write(f"{dataset_id}\t{asv_id}\t{source_fna}\n")
+        f.write("dataset_id\tasv_id\tsource_fna\tregion\n")
+        for dataset_id, asv_id, source_fna, region, sequence in all_asv_records:
+            f.write(f"{dataset_id}\t{asv_id}\t{source_fna}\t{region}\n")
     
     print(f"  Wrote manifest with {len(all_asv_records)} entries")
     print(f"  Unique datasets: {len(dataset_counts)}")
     for ds_id, count in sorted(dataset_counts.items()):
         print(f"    {ds_id}: {count} ASVs")
+    print(f"  Region metadata: {asvs_with_known_region}/{len(all_asv_records)} ASVs with known region")
+    if unique_regions:
+        print(f"  Unique regions: {', '.join(sorted(unique_regions))}")
     print()
     
     # --- 8. Write staging information file ---
@@ -407,7 +451,12 @@ if __name__ == "__main__":
         f.write("-" * 40 + "\n")
         f.write(f"Total ASVs: {len(all_asv_records)}\n")
         f.write(f"Total Datasets: {len(dataset_counts)}\n")
-        f.write(f"Total Source FASTA Files: {len(fna_files)}\n\n")
+        f.write(f"Total Source FASTA Files: {len(fna_files)}\n")
+        f.write(f"Files with Region Metadata: {files_with_region_metadata}\n")
+        f.write(f"ASVs with Known Region: {asvs_with_known_region}/{len(all_asv_records)}\n")
+        if unique_regions:
+            f.write(f"Unique Regions: {', '.join(sorted(unique_regions))}\n")
+        f.write("\n")
         
         f.write("ASV Counts per Dataset:\n")
         for ds_id, count in sorted(dataset_counts.items()):
@@ -431,8 +480,13 @@ if __name__ == "__main__":
     print(f"    - ref_arc.fna ({len(arc_seq)} bp)")
     print(f"    - ref_bac.fna ({len(bac_seq)} bp)")
     print(f"    - all_asvs.fna ({len(all_asv_records)} sequences)")
-    print(f"    - dataset_manifest.tsv ({len(dataset_counts)} datasets)")
+    print(f"    - dataset_manifest.tsv ({len(dataset_counts)} datasets, region column included)")
     print(f"    - about_staging.txt")
+    print()
+    if asvs_with_known_region > 0:
+        print(f"Region metadata: {asvs_with_known_region} ASVs with known region ({len(unique_regions)} unique regions)")
+    else:
+        print(f"Region metadata: No region data found (all set to '{UNKNOWN_REGION}')")
     print()
     print("Next step: Run asvs2truncspec_02_hmmer.sh")
     print()

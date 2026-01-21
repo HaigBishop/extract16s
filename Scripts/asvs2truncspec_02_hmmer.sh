@@ -57,7 +57,7 @@
 #     --bac_hmm InputData/bac_16s.hmm \
 #     --staged_dir asvs2truncspec_out/intermediates/01_staged_inputs \
 #     --out_dir asvs2truncspec_out/intermediates/02_hmmer \
-#     --threads 18 \
+#     --threads 24 \
 #     --verbose
 
 

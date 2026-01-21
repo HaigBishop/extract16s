@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 INFO_OUT_DIR = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/"
 
 # Path to final .truncspec file
-TRUNCSPEC_OUT_PATH = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/new.truncspec"
+TRUNCSPEC_OUT_PATH = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/trunc_267_datasets.truncspec"
 
 # Reference sequence IDs (must match Step 1)
 ARC_REF_SEQ_ID = "RS_GCF_022846175.1~NZ_AP025587.1-#2"
@@ -83,7 +83,7 @@ MAX_LEN_BUFFER = 50
 #    that are within CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE bp of the region that did 
 #    yeild coordinates.
 USE_CROSS_DOMAIN_BOOTSTRAPPING = True
-CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE = 90 # bp
+CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE = 85 # bp
 
 # Optional final processing step 2: Region redundancy minimisation
 #    If we are using a lot of datasets, we may have a lot of regions that are very similar 
@@ -91,7 +91,7 @@ CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE = 90 # bp
 #    and end coordinates within a certain distance (REGION_REDUNDANCY_MINIMISATION_MAX_DISTANCE) 
 #    of each other for *both domains*. 
 USE_REGION_REDUNDANCY_MINIMISATION = True
-REGION_REDUNDANCY_MINIMISATION_MAX_DISTANCE = 40 # bp
+REGION_REDUNDANCY_MINIMISATION_MAX_DISTANCE = 25 # bp
 REGION_REDUNDANCY_MINIMISATION_NAME_JOINER = "+"
 
 # Optional final processing step 3: Region renaming
@@ -99,9 +99,13 @@ REGION_REDUNDANCY_MINIMISATION_NAME_JOINER = "+"
 #    the names get concatenated resulting in long complicated names. This feature renames the regions.
 #    The method "uniform" will rename the regions to a uniform name like "Reg-001", "Reg-002", etc.
 #    The method "dataset" will rename the regions based on only the first dataset name in the region name like "{dataset}-001", "{dataset}-002", etc.
+#    The method "region" will rename the regions based on the 16S region from the 'region' column in dataset_manifest.tsv.
+#        Each unique region has its own counter starting from 001 (e.g. "V4-001", "V4-002", "V3-V4-001", "V3-V4-002").
+#        The script will raise an error if a region does not have a single consistent region for all datasets of origin,
+#        or if any region has no region metadata (all UNK).
 #    A helpful TSV file is written which maps the old name to the new name called "region_renamings.tsv".
 USE_REGION_RENAMING = True
-REGION_RENAMING_METHOD = "uniform" # "uniform" or "dataset"
+REGION_RENAMING_METHOD = "region"  # "uniform", "dataset", or "region"
 
 
 
@@ -949,8 +953,56 @@ def select_dataset_prefix(region_name, name_joiner):
         return parts[0]
 
 
-def apply_region_renaming(dataset_calls, method, name_joiner):
+def get_region_for_merged_datasets(region_name, name_joiner, dataset_to_regions):
+    """Get the consistent region for a (possibly merged) region name.
+    
+    For the 'region' renaming method, we need to verify that all datasets
+    in a merged region have the same 16S region metadata.
+    
+    Returns the region string (e.g. "V4", "V3-V4") or raises ValueError if inconsistent.
+    """
+    # split merged name into individual dataset IDs
+    dataset_ids = region_name.split(name_joiner)
+    
+    # collect all non-UNK regions across all datasets
+    all_regions = set()
+    ds_to_regions_clean = {}
+    for ds_id in dataset_ids:
+        if ds_id in dataset_to_regions:
+            ds_regions = dataset_to_regions[ds_id]
+            clean = [r for r in ds_regions if r != 'UNK']
+            ds_to_regions_clean[ds_id] = sorted(clean) if clean else ["UNK"]
+            for r in clean:
+                all_regions.add(r)
+        else:
+            ds_to_regions_clean[ds_id] = ["NOT_FOUND"]
+    
+    # check consistency
+    if len(all_regions) == 0:
+        raise ValueError(
+            f"Region '{region_name}' has no region metadata (all UNK). "
+            f"Cannot use 'region' renaming method without region metadata."
+        )
+    elif len(all_regions) > 1:
+        ds_details = "\n".join([f"  - {ds}: {regs}" for ds, regs in sorted(ds_to_regions_clean.items())])
+        raise ValueError(
+            f"Region '{region_name}' has inconsistent region metadata: {sorted(all_regions)}.\n"
+            f"Component datasets:\n{ds_details}\n"
+            f"All datasets in a merged region must have the same 16S region."
+        )
+    
+    return all_regions.pop()
+
+
+def apply_region_renaming(dataset_calls, method, name_joiner, dataset_to_regions=None):
     """Rename regions according to the specified method.
+    
+    Methods:
+    - 'uniform': Rename all regions to 'Reg-001', 'Reg-002', etc.
+    - 'dataset': Rename regions to '{dataset}-001', '{dataset}-002', etc.
+    - 'region': Rename regions to '{region}-001', '{region}-002', etc. where
+                {region} is the 16S region (e.g. 'V4', 'V3-V4') from metadata.
+                Each unique region has its own counter starting from 001.
     
     Returns:
     - renamed_calls: dict with new names as keys
@@ -961,20 +1013,39 @@ def apply_region_renaming(dataset_calls, method, name_joiner):
     renaming_map = {}
     renamed_calls = {}
     
-    global_counter = 1
-    
-    for old_name in sorted_names:
-        if method == 'uniform':
-            new_name = f"Reg-{global_counter:03d}"
-        elif method == 'dataset':
-            prefix = select_dataset_prefix(old_name, name_joiner)
-            new_name = f"{prefix}-{global_counter:03d}"
-        else:
-            raise ValueError(f"Unknown renaming method: {method}")
+    if method == 'region':
+        # for region method, use per-region counters
+        region_counters = {}  # region_prefix → next counter
         
-        renaming_map[old_name] = new_name
-        renamed_calls[new_name] = copy.deepcopy(dataset_calls[old_name])
-        global_counter += 1
+        for old_name in sorted_names:
+            region_prefix = get_region_for_merged_datasets(
+                old_name, name_joiner, dataset_to_regions
+            )
+            
+            if region_prefix not in region_counters:
+                region_counters[region_prefix] = 1
+            
+            new_name = f"{region_prefix}-{region_counters[region_prefix]:03d}"
+            region_counters[region_prefix] += 1
+            
+            renaming_map[old_name] = new_name
+            renamed_calls[new_name] = copy.deepcopy(dataset_calls[old_name])
+    else:
+        # uniform and dataset methods use a global counter
+        global_counter = 1
+        
+        for old_name in sorted_names:
+            if method == 'uniform':
+                new_name = f"Reg-{global_counter:03d}"
+            elif method == 'dataset':
+                prefix = select_dataset_prefix(old_name, name_joiner)
+                new_name = f"{prefix}-{global_counter:03d}"
+            else:
+                raise ValueError(f"Unknown renaming method: {method}")
+            
+            renaming_map[old_name] = new_name
+            renamed_calls[new_name] = copy.deepcopy(dataset_calls[old_name])
+            global_counter += 1
     
     return renamed_calls, renaming_map
 
@@ -1190,12 +1261,13 @@ def format_bootstrap_comment(call):
     return " # Bootstrapped: " + "; ".join(parts)
 
 
-def write_truncspec(dataset_calls, arc_ref_id, bac_ref_id, out_path, include_bootstrap_comments=True):
+def write_truncspec(dataset_calls, arc_ref_id, bac_ref_id, out_path, n_input_datasets, include_bootstrap_comments=True):
     """Write the final .truncspec file."""
+    n_final_regions = len(dataset_calls)
     with open(out_path, 'w') as f:
         # header comments
         f.write("# 16S Region Truncation Specification File (.truncspec)\n")
-        f.write("# Generated by asvs2truncspec\n")
+        f.write(f"# Generated by asvs2truncspec using {n_input_datasets} datasets to derive {n_final_regions} regions\n")
         f.write(f"# Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("# This file specifies regions to be extracted from 16S alignments using `extract16s.sh`\n")
         f.write("\n")
@@ -1295,28 +1367,49 @@ if __name__ == "__main__":
     print(f"  Wrote: {bac_map_path}")
     print()
     
-    # --- 3. Load dataset manifest to get total ASV count and dataset list ---
+    # --- 3. Load dataset manifest to get total ASV count, dataset list, and region metadata ---
     print("Loading dataset manifest...")
     manifest_path = STAGED_DIR + "/dataset_manifest.tsv"
     
     dataset_to_asvs = {}  # dataset_id → set of asv_ids
+    dataset_to_regions = {}  # dataset_id → set of region values
     total_asvs = 0
     
     with open(manifest_path, 'r') as f:
-        header = f.readline()  # skip header
+        header = f.readline().strip().split('\t')
+        # find column indices
+        ds_col = header.index('dataset_id')
+        asv_col = header.index('asv_id')
+        region_col = header.index('region') if 'region' in header else None
+        
         for line in f:
             parts = line.strip().split('\t')
             if len(parts) >= 2:
-                ds_id = parts[0]
-                asv_id = parts[1]
+                ds_id = parts[ds_col]
+                asv_id = parts[asv_col]
                 if ds_id not in dataset_to_asvs:
                     dataset_to_asvs[ds_id] = set()
+                    dataset_to_regions[ds_id] = set()
                 dataset_to_asvs[ds_id].add(asv_id)
                 total_asvs += 1
+                
+                # track region metadata
+                if region_col is not None and region_col < len(parts):
+                    dataset_to_regions[ds_id].add(parts[region_col])
     
     all_datasets = sorted(dataset_to_asvs.keys())
+    n_input_datasets = len(all_datasets)
     print(f"  Total ASVs: {total_asvs}")
-    print(f"  Total datasets: {len(all_datasets)}")
+    print(f"  Total datasets: {n_input_datasets}")
+    
+    # summarize region metadata
+    datasets_with_region = sum(1 for ds in dataset_to_regions.values() if ds and ds != {'UNK'})
+    if datasets_with_region > 0:
+        all_regions = set()
+        for regions in dataset_to_regions.values():
+            all_regions.update(r for r in regions if r != 'UNK')
+        print(f"  Datasets with region metadata: {datasets_with_region}")
+        print(f"  Unique regions: {', '.join(sorted(all_regions))}")
     print()
     
     # --- 4. Parse tblout files and filter hits ---
@@ -1549,8 +1642,18 @@ if __name__ == "__main__":
         dataset_calls_renamed, renaming_map = apply_region_renaming(
             dataset_calls_redundancy_min,
             REGION_RENAMING_METHOD,
-            REGION_REDUNDANCY_MINIMISATION_NAME_JOINER
+            REGION_REDUNDANCY_MINIMISATION_NAME_JOINER,
+            dataset_to_regions
         )
+        
+        # print region-specific info for 'region' method
+        if REGION_RENAMING_METHOD == 'region':
+            region_counts = {}
+            for new_name in renaming_map.values():
+                region_prefix = new_name.rsplit('-', 1)[0]
+                region_counts[region_prefix] = region_counts.get(region_prefix, 0) + 1
+            for region_prefix in sorted(region_counts.keys()):
+                print(f"    {region_prefix}: {region_counts[region_prefix]} regions")
         
         print(f"  Renamed {len(renaming_map)} regions")
         print()
@@ -1562,12 +1665,18 @@ if __name__ == "__main__":
     print("Writing final .truncspec file...")
     if use_bootstrapping:
         unbootstrapped_path = insert_suffix_before_ext(TRUNCSPEC_OUT_PATH, "_no-bootstrapping")
-        write_truncspec(dataset_calls_unbootstrapped, ARC_REF_SEQ_ID, BAC_REF_SEQ_ID, unbootstrapped_path)
+        write_truncspec(
+            dataset_calls_unbootstrapped, ARC_REF_SEQ_ID, BAC_REF_SEQ_ID, 
+            unbootstrapped_path, n_input_datasets
+        )
         print(f"  Wrote: {unbootstrapped_path}")
     
     if use_redundancy_minimisation:
         no_redundancy_path = insert_suffix_before_ext(TRUNCSPEC_OUT_PATH, "_no-redundancy-min")
-        write_truncspec(dataset_calls_pre_redundancy, ARC_REF_SEQ_ID, BAC_REF_SEQ_ID, no_redundancy_path)
+        write_truncspec(
+            dataset_calls_pre_redundancy, ARC_REF_SEQ_ID, BAC_REF_SEQ_ID, 
+            no_redundancy_path, n_input_datasets
+        )
         print(f"  Wrote: {no_redundancy_path}")
     
     suppress_bootstrap_comments = use_redundancy_minimisation
@@ -1579,6 +1688,7 @@ if __name__ == "__main__":
             ARC_REF_SEQ_ID,
             BAC_REF_SEQ_ID,
             no_renaming_path,
+            n_input_datasets,
             include_bootstrap_comments=not suppress_bootstrap_comments
         )
         print(f"  Wrote: {no_renaming_path}")
@@ -1588,6 +1698,7 @@ if __name__ == "__main__":
         ARC_REF_SEQ_ID,
         BAC_REF_SEQ_ID,
         TRUNCSPEC_OUT_PATH,
+        n_input_datasets,
         include_bootstrap_comments=not suppress_bootstrap_comments
     )
     print(f"  Wrote: {TRUNCSPEC_OUT_PATH}")
