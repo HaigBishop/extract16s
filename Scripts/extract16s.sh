@@ -428,11 +428,11 @@ fi
 verbose_echo "Truncation specifications:"
 declare -A region_specs
 while IFS= read -r line || [[ -n "$line" ]]; do
-  # Skip comments and blank lines
-  [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-
-  # Clean the line to remove any hidden characters
+  # Clean the line, strip inline comments, and trim whitespace
   line=$(echo "$line" | tr -d '\r')
+  line="${line%%#*}"
+  line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  [[ -z "$line" ]] && continue
   
   if [[ "$line" =~ ^ARC_REF_SEQ_ID ]]; then
     arc_ref=$(echo "$line" | cut -d':' -f2 | xargs)
