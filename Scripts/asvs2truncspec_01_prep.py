@@ -37,10 +37,10 @@ import datetime
 DB_PATH = "/mnt/secondary/micro16s_dbs/16s_databases/ssu_all_r226.fna"
 
 # Directory containing ASV FASTA files (.fna) and optional dataset TSVs
-ASV_DIR = "/home/haig/Repos/micro16s/extract16s/target_asvs"
+ASV_DIR = "/home/haig/Repos/extract16s/target_asvs"
 
 # Output directory for info and intermediates
-INFO_OUT_DIR = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/"
+INFO_OUT_DIR = "/home/haig/Repos/extract16s/asvs2truncspec_out/"
 
 # Reference sequence IDs (must exist in DB_PATH)
 ARC_REF_SEQ_ID = "RS_GCF_022846175.1~NZ_AP025587.1-#2"

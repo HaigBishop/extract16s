@@ -42,10 +42,10 @@ import matplotlib.pyplot as plt
 # =============================================================================
 
 # Output directory for info and intermediates (same as Step 1)
-INFO_OUT_DIR = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/"
+INFO_OUT_DIR = "/home/haig/Repos/extract16s/asvs2truncspec_out/"
 
 # Path to final .truncspec file
-TRUNCSPEC_OUT_PATH = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/trunc_267_datasets.truncspec"
+TRUNCSPEC_OUT_PATH = "/home/haig/Repos/extract16s/asvs2truncspec_out/new.truncspec"
 
 # Reference sequence IDs (must match Step 1)
 ARC_REF_SEQ_ID = "RS_GCF_022846175.1~NZ_AP025587.1-#2"
@@ -60,6 +60,7 @@ RESULTS_DIR = INTER_DIR + "/03_results"
 # Final region plots
 FINAL_REGIONS_ARC_PLOT_PATH = INFO_OUT_DIR + "/final_regions_arc.png"
 FINAL_REGIONS_BAC_PLOT_PATH = INFO_OUT_DIR + "/final_regions_bac.png"
+PLOT_ALL_AVAILABLE_REGIONS_PER_DOMAIN = True # If False, only plots the regions that have complete coordinates for both domains
 
 # Hit filtering thresholds
 ARC_HMMER_MAX_EVALUE = 1e-4
@@ -82,7 +83,7 @@ MAX_LEN_BUFFER = 50
 #    yeild coordinates for both domains. It will only consider relying on other regions 
 #    that are within CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE bp of the region that did 
 #    yeild coordinates.
-USE_CROSS_DOMAIN_BOOTSTRAPPING = True
+USE_CROSS_DOMAIN_BOOTSTRAPPING = False
 CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE = 85 # bp
 
 # Optional final processing step 2: Region redundancy minimisation
@@ -90,7 +91,7 @@ CROSS_DOMAIN_BOOTSTRAPPING_MAX_DISTANCE = 85 # bp
 #    and therefore are redundant. This feature merges regions that have both their start 
 #    and end coordinates within a certain distance (REGION_REDUNDANCY_MINIMISATION_MAX_DISTANCE) 
 #    of each other for *both domains*. 
-USE_REGION_REDUNDANCY_MINIMISATION = True
+USE_REGION_REDUNDANCY_MINIMISATION = False
 REGION_REDUNDANCY_MINIMISATION_MAX_DISTANCE = 25 # bp
 REGION_REDUNDANCY_MINIMISATION_NAME_JOINER = "+"
 
@@ -103,9 +104,14 @@ REGION_REDUNDANCY_MINIMISATION_NAME_JOINER = "+"
 #        Each unique region has its own counter starting from 001 (e.g. "V4-001", "V4-002", "V3-V4-001", "V3-V4-002").
 #        The script will raise an error if a region does not have a single consistent region for all datasets of origin,
 #        or if any region has no region metadata (all UNK).
+#    The method "dataset-region" will rename the regions based on only the first dataset name in the region name and the 16S region from the 'region' 
+#        column in dataset_manifest.tsv. For example, "16S_102_Bodkhe+16S_119_Salamon" might be renamed to "16S_102_Bodkhe_V4-001".
+#        Each unique region has its own counter starting from 001 (e.g. "V4-001", "V4-002", "V3-V4-001", "V3-V4-002").
+#        The script will raise an error if a region does not have a single consistent region for all datasets of origin,
+#        or if any region has no region metadata (all UNK).
 #    A helpful TSV file is written which maps the old name to the new name called "region_renamings.tsv".
 USE_REGION_RENAMING = True
-REGION_RENAMING_METHOD = "region"  # "uniform", "dataset", or "region"
+REGION_RENAMING_METHOD = "dataset-region"  # "uniform", "dataset", "region" or "dataset-region"
 
 
 
@@ -920,13 +926,24 @@ def apply_region_redundancy_minimisation(dataset_calls, max_distance, name_joine
             arc_start, arc_end, bac_start, bac_end, MIN_LEN_BUFFER, MAX_LEN_BUFFER
         )
         
+        # Robustly determine the region for the merged group
+        merged_regions = set()
+        for entry in group:
+            orig_ds_id = entry['dataset_id']
+            if orig_ds_id in dataset_calls:
+                merged_regions.add(dataset_calls[orig_ds_id].get('region', 'UNK'))
+        
+        clean_merged = [r for r in merged_regions if r and r != 'UNK']
+        final_merged_region = sorted(clean_merged)[0] if clean_merged else "UNK"
+
         merged_calls[merged_id] = {
             'arc_start': arc_start,
             'arc_end': arc_end,
             'bac_start': bac_start,
             'bac_end': bac_end,
             'min_len': min_len,
-            'max_len': max_len
+            'max_len': max_len,
+            'region': final_merged_region
         }
         
         merge_groups.append(group_ids)
@@ -1003,6 +1020,9 @@ def apply_region_renaming(dataset_calls, method, name_joiner, dataset_to_regions
     - 'region': Rename regions to '{region}-001', '{region}-002', etc. where
                 {region} is the 16S region (e.g. 'V4', 'V3-V4') from metadata.
                 Each unique region has its own counter starting from 001.
+    - 'dataset-region': Rename regions to '{dataset}_{region}-001', etc. where
+                {dataset} is the first dataset name and {region} is the 16S region
+                from metadata. Each unique region has its own counter starting from 001.
     
     Returns:
     - renamed_calls: dict with new names as keys
@@ -1026,6 +1046,29 @@ def apply_region_renaming(dataset_calls, method, name_joiner, dataset_to_regions
                 region_counters[region_prefix] = 1
             
             new_name = f"{region_prefix}-{region_counters[region_prefix]:03d}"
+            region_counters[region_prefix] += 1
+            
+            renaming_map[old_name] = new_name
+            renamed_calls[new_name] = copy.deepcopy(dataset_calls[old_name])
+    elif method == 'dataset-region':
+        # for dataset-region method, use per-region counters
+        region_counters = {}  # region_prefix → next counter
+        
+        for old_name in sorted_names:
+            # get region prefix from metadata (validates consistency)
+            region_prefix = get_region_for_merged_datasets(
+                old_name, name_joiner, dataset_to_regions
+            )
+            
+            # get dataset prefix from region name
+            dataset_prefix = select_dataset_prefix(old_name, name_joiner)
+            
+            # initialize counter for this region if needed
+            if region_prefix not in region_counters:
+                region_counters[region_prefix] = 1
+            
+            # format: {dataset}_{region}-{counter:03d}
+            new_name = f"{dataset_prefix}_{region_prefix}-{region_counters[region_prefix]:03d}"
             region_counters[region_prefix] += 1
             
             renaming_map[old_name] = new_name
@@ -1176,25 +1219,38 @@ def write_filter_stats(arc_stats, bac_stats, arc_gated, bac_gated, total_asvs, o
 
 def truncate_region_name(region_name):
     """Shorten long region names for plotting."""
-    if len(region_name) > 25:
-        return region_name[:22] + "..."
+    if len(region_name) > 30:
+        return region_name[:27] + "..."
     return region_name
 
 
-def get_complete_regions(dataset_calls):
-    """Collect regions that have complete coordinates for both domains."""
+def get_complete_regions(dataset_calls, domain_filter=None):
+    """Collect regions for plotting.
+    
+    If domain_filter is None, only returns regions with complete coordinates for BOTH domains.
+    If domain_filter is 'arc' or 'bac', returns regions with complete coordinates for THAT domain.
+    """
     regions = []
     for ds_id in sorted(dataset_calls.keys()):
         call = dataset_calls[ds_id]
         arc_ok = call['arc_start'] is not None and call['arc_end'] is not None
         bac_ok = call['bac_start'] is not None and call['bac_end'] is not None
-        if arc_ok and bac_ok:
+        
+        if domain_filter == 'arc':
+            include = arc_ok
+        elif domain_filter == 'bac':
+            include = bac_ok
+        else:
+            include = arc_ok and bac_ok
+            
+        if include:
             regions.append({
                 'dataset_id': ds_id,
                 'arc_start': call['arc_start'],
                 'arc_end': call['arc_end'],
                 'bac_start': call['bac_start'],
-                'bac_end': call['bac_end']
+                'bac_end': call['bac_end'],
+                'region': call.get('region', 'UNK')
             })
     return regions
 
@@ -1203,6 +1259,12 @@ def plot_final_regions(complete_regions, domain, ref_length, out_path):
     """Plot final complete regions across a reference sequence."""
     if not complete_regions:
         return
+    
+    # Sort regions alphabetically by region metadata, then by dataset_id
+    complete_regions = sorted(
+        complete_regions, 
+        key=lambda r: (str(r.get('region', 'UNK')), str(r.get('dataset_id', '')))
+    )
     
     fig_height = max(2.5, 0.25 * len(complete_regions) + 1.0)
     fig, ax = plt.subplots(figsize=(20, fig_height))
@@ -1513,13 +1575,19 @@ if __name__ == "__main__":
             arc_start, arc_end, bac_start, bac_end, MIN_LEN_BUFFER, MAX_LEN_BUFFER
         )
         
+        # Robustly get a single region string from the metadata set
+        region_set = dataset_to_regions.get(ds_id, {'UNK'})
+        clean_regions = [r for r in region_set if r and r != 'UNK']
+        ds_region = sorted(clean_regions)[0] if clean_regions else "UNK"
+
         dataset_calls[ds_id] = {
             'arc_start': arc_start,
             'arc_end': arc_end,
             'bac_start': bac_start,
             'bac_end': bac_end,
             'min_len': min_len,
-            'max_len': max_len
+            'max_len': max_len,
+            'region': ds_region
         }
     
     # count complete vs incomplete before bootstrapping
@@ -1646,11 +1714,22 @@ if __name__ == "__main__":
             dataset_to_regions
         )
         
-        # print region-specific info for 'region' method
+        # print region-specific info for 'region' and 'dataset-region' methods
         if REGION_RENAMING_METHOD == 'region':
             region_counts = {}
             for new_name in renaming_map.values():
                 region_prefix = new_name.rsplit('-', 1)[0]
+                region_counts[region_prefix] = region_counts.get(region_prefix, 0) + 1
+            for region_prefix in sorted(region_counts.keys()):
+                print(f"    {region_prefix}: {region_counts[region_prefix]} regions")
+        elif REGION_RENAMING_METHOD == 'dataset-region':
+            region_counts = {}
+            for new_name in renaming_map.values():
+                # extract region prefix from format: {dataset}_{region}-{counter}
+                # step 1: remove counter suffix
+                name_without_counter = new_name.rsplit('-', 1)[0]
+                # step 2: extract region part after last underscore
+                region_prefix = name_without_counter.rsplit('_', 1)[1]
                 region_counts[region_prefix] = region_counts.get(region_prefix, 0) + 1
             for region_prefix in sorted(region_counts.keys()):
                 print(f"    {region_prefix}: {region_counts[region_prefix]} regions")
@@ -1709,20 +1788,29 @@ if __name__ == "__main__":
         print(f"  Wrote: {renaming_map_path}")
     print()
     
-    # --- 11b. Plot final complete regions ---
-    complete_regions = get_complete_regions(dataset_calls_renamed)
+    # --- 11b. Plot final regions ---
+    if PLOT_ALL_AVAILABLE_REGIONS_PER_DOMAIN:
+        arc_regions = get_complete_regions(dataset_calls_renamed, domain_filter='arc')
+        bac_regions = get_complete_regions(dataset_calls_renamed, domain_filter='bac')
+    else:
+        shared_regions = get_complete_regions(dataset_calls_renamed)
+        arc_regions = shared_regions
+        bac_regions = shared_regions
+
     final_region_plots_written = False
     
-    if complete_regions:
-        print("Plotting final complete regions...")
-        plot_final_regions(complete_regions, 'arc', arc_ref_len, FINAL_REGIONS_ARC_PLOT_PATH)
-        plot_final_regions(complete_regions, 'bac', bac_ref_len, FINAL_REGIONS_BAC_PLOT_PATH)
-        print(f"  Wrote: {FINAL_REGIONS_ARC_PLOT_PATH}")
-        print(f"  Wrote: {FINAL_REGIONS_BAC_PLOT_PATH}")
+    if arc_regions or bac_regions:
+        print("Plotting final regions...")
+        if arc_regions:
+            plot_final_regions(arc_regions, 'arc', arc_ref_len, FINAL_REGIONS_ARC_PLOT_PATH)
+            print(f"  Wrote: {FINAL_REGIONS_ARC_PLOT_PATH}")
+        if bac_regions:
+            plot_final_regions(bac_regions, 'bac', bac_ref_len, FINAL_REGIONS_BAC_PLOT_PATH)
+            print(f"  Wrote: {FINAL_REGIONS_BAC_PLOT_PATH}")
         print()
         final_region_plots_written = True
     else:
-        print("No complete regions found; skipping final region plots.")
+        print("No regions found to plot; skipping final region plots.")
         print()
     
     # --- 12. Write about file ---
@@ -1739,6 +1827,7 @@ if __name__ == "__main__":
         'ARC_MIN_HITS_PER_DATASET': ARC_MIN_HITS_PER_DATASET,
         'BAC_MIN_HITS_PER_DATASET': BAC_MIN_HITS_PER_DATASET,
         'OUTLIER_TOL_BP': OUTLIER_TOL_BP,
+        'PLOT_ALL_AVAILABLE_REGIONS_PER_DOMAIN': PLOT_ALL_AVAILABLE_REGIONS_PER_DOMAIN,
         'MIN_LEN_BUFFER': MIN_LEN_BUFFER,
         'MAX_LEN_BUFFER': MAX_LEN_BUFFER,
         'USE_CROSS_DOMAIN_BOOTSTRAPPING': USE_CROSS_DOMAIN_BOOTSTRAPPING,
