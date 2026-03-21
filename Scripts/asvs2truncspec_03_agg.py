@@ -45,11 +45,11 @@ import matplotlib.pyplot as plt
 INFO_OUT_DIR = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/"
 
 # Path to final .truncspec file
-TRUNCSPEC_OUT_PATH = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/trunc_267_datasets.truncspec"
+TRUNCSPEC_OUT_PATH = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/trunc_001.truncspec"
 
 # Reference sequence IDs (must match Step 1)
-ARC_REF_SEQ_ID = "RS_GCF_022846175.1~NZ_AP025587.1-#2"
-BAC_REF_SEQ_ID = "RS_GCF_030545895.1~NZ_JAUOMX010000042.1"
+ARC_REF_SEQ_ID = "RS_GCF_000016525.1~NC_009515.1"
+BAC_REF_SEQ_ID = "RS_GCF_003697165.2~NZ_CP033092.2"
 
 # Intermediate directory structure (derived from INFO_OUT_DIR)
 INTER_DIR = INFO_OUT_DIR + "/intermediates"
@@ -74,6 +74,9 @@ OUTLIER_TOL_BP = 30
 # Region length buffers
 MIN_LEN_BUFFER = 50
 MAX_LEN_BUFFER = 50
+
+# Minimum allowed min_len value
+MIN_MIN_LENGTH = 0
 
 # Optional final processing step 1: Cross‑domain bootstrapping
 #    In cases where one domain yeilds coordinates, but the other does not, we can use the 
@@ -1062,6 +1065,42 @@ def write_renaming_map(renaming_map, out_path):
 # OUTPUT WRITING
 # =============================================================================
 
+def apply_min_min_length_check(dataset_calls, min_min_length):
+    """Apply MIN_MIN_LENGTH check to all dataset calls.
+    
+    Adjusts min_len values to be at least min_min_length.
+    Returns tuple of (adjusted_count, critical_count) where:
+    - adjusted_count: number of regions with min_len adjusted
+    - critical_count: number of regions where max_len <= MIN_MIN_LENGTH
+    """
+    adjusted_count = 0
+    critical_count = 0
+    adjusted_regions = []
+    critical_regions = []
+    
+    for ds_id, call in dataset_calls.items():
+        min_len = call.get('min_len')
+        max_len = call.get('max_len')
+        
+        # skip if min_len or max_len is None/NA
+        if min_len is None or max_len is None:
+            continue
+        
+        # check if max_len <= MIN_MIN_LENGTH (critical)
+        if max_len <= min_min_length:
+            critical_count += 1
+            critical_regions.append((ds_id, min_len, max_len))
+        
+        # adjust min_len if below MIN_MIN_LENGTH
+        if min_len < min_min_length:
+            old_min_len = min_len
+            call['min_len'] = min_min_length
+            adjusted_count += 1
+            adjusted_regions.append((ds_id, old_min_len, min_min_length))
+    
+    return adjusted_count, critical_count, adjusted_regions, critical_regions
+
+
 def insert_suffix_before_ext(path, suffix):
     """Insert suffix before extension (or append if no extension)."""
     base, ext = os.path.splitext(path)
@@ -1660,6 +1699,75 @@ if __name__ == "__main__":
     else:
         dataset_calls_renamed = dataset_calls_redundancy_min
         dataset_calls_pre_renaming = None
+    
+    # --- 10d. Apply MIN_MIN_LENGTH check to all output versions ---
+    print(f"Applying MIN_MIN_LENGTH check (MIN_MIN_LENGTH={MIN_MIN_LENGTH})...")
+    
+    # Apply check to all versions that will be written
+    all_adjusted = []
+    all_critical = []
+    
+    # Check unbootstrapped version if it exists
+    if use_bootstrapping and dataset_calls_unbootstrapped is not None:
+        adj_cnt, crit_cnt, adj_regs, crit_regs = apply_min_min_length_check(
+            dataset_calls_unbootstrapped, MIN_MIN_LENGTH
+        )
+        if adj_cnt > 0 or crit_cnt > 0:
+            all_adjusted.extend([("unbootstrapped", r) for r in adj_regs])
+            all_critical.extend([("unbootstrapped", r) for r in crit_regs])
+    
+    # Check pre-redundancy version if it exists
+    if use_redundancy_minimisation:
+        adj_cnt, crit_cnt, adj_regs, crit_regs = apply_min_min_length_check(
+            dataset_calls_pre_redundancy, MIN_MIN_LENGTH
+        )
+        if adj_cnt > 0 or crit_cnt > 0:
+            all_adjusted.extend([("pre-redundancy", r) for r in adj_regs])
+            all_critical.extend([("pre-redundancy", r) for r in crit_regs])
+    
+    # Check pre-renaming version if it exists
+    if use_region_renaming and dataset_calls_pre_renaming is not None:
+        adj_cnt, crit_cnt, adj_regs, crit_regs = apply_min_min_length_check(
+            dataset_calls_pre_renaming, MIN_MIN_LENGTH
+        )
+        if adj_cnt > 0 or crit_cnt > 0:
+            all_adjusted.extend([("pre-renaming", r) for r in adj_regs])
+            all_critical.extend([("pre-renaming", r) for r in crit_regs])
+    
+    # Check final renamed version
+    adjusted_count, critical_count, adjusted_regions, critical_regions = apply_min_min_length_check(
+        dataset_calls_renamed, MIN_MIN_LENGTH
+    )
+    if adjusted_count > 0 or critical_count > 0:
+        all_adjusted.extend([("final", r) for r in adjusted_regions])
+        all_critical.extend([("final", r) for r in critical_regions])
+    
+    # Print warnings
+    total_adjusted = len(all_adjusted)
+    total_critical = len(all_critical)
+    
+    if total_adjusted > 0:
+        print(f"  WARNING: {total_adjusted} region(s) had min_len < {MIN_MIN_LENGTH} and were adjusted to {MIN_MIN_LENGTH}")
+        # Show final version adjustments
+        final_adjustments = [(ds_id, old_min, new_min) for ver, (ds_id, old_min, new_min) in all_adjusted if ver == "final"]
+        for ds_id, old_min, new_min in final_adjustments[:5]:  # show first 5
+            print(f"    - {ds_id}: {old_min} -> {new_min}")
+        if len(final_adjustments) > 5:
+            print(f"    ... and {len(final_adjustments) - 5} more in final version")
+    else:
+        print(f"  All min_len values are >= {MIN_MIN_LENGTH}")
+    
+    if total_critical > 0:
+        print()
+        print("  !!! WARNING !!!")
+        print(f"  !!! {total_critical} region(s) have max_len <= MIN_MIN_LENGTH ({MIN_MIN_LENGTH}) !!!")
+        print("  !!! These regions may not function properly with extract16s.sh !!!")
+        # Show all critical regions from final version
+        final_critical = [(ds_id, min_len, max_len) for ver, (ds_id, min_len, max_len) in all_critical if ver == "final"]
+        for ds_id, min_len, max_len in final_critical:
+            print(f"    !!! - {ds_id}: min_len={min_len}, max_len={max_len}")
+        print("  !!! WARNING !!!")
+    print()
     
     # --- 11. Write final .truncspec file ---
     print("Writing final .truncspec file...")

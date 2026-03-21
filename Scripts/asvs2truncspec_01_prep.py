@@ -43,8 +43,8 @@ ASV_DIR = "/home/haig/Repos/micro16s/extract16s/target_asvs"
 INFO_OUT_DIR = "/home/haig/Repos/micro16s/extract16s/asvs2truncspec_out/"
 
 # Reference sequence IDs (must exist in DB_PATH)
-ARC_REF_SEQ_ID = "RS_GCF_022846175.1~NZ_AP025587.1-#2"
-BAC_REF_SEQ_ID = "RS_GCF_030545895.1~NZ_JAUOMX010000042.1"
+ARC_REF_SEQ_ID = "RS_GCF_000016525.1~NC_009515.1"
+BAC_REF_SEQ_ID = "RS_GCF_003697165.2~NZ_CP033092.2"
 
 # Intermediate directory structure (derived from INFO_OUT_DIR)
 INTER_DIR = INFO_OUT_DIR + "/intermediates"

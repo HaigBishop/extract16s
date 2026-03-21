@@ -1,0 +1,4 @@
+
+`asvs2truncspec_out_micro16s/` is an example of an output directory from the `asvs2truncspec` tool.
+
+It contains the exact ouputs for the micro16s workflow involving ASVs from 250 datasets.
